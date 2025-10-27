@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  nestjs-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nestjs_backend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    env_file:
+      - .env
+    networks:
+      - laravel_net # ✅ join ke network yang sama dengan MySQL
+
+networks:
+  laravel_net:
+    external: true # ✅ pakai network yang sudah dibuat oleh MySQL compose

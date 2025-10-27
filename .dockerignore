@@ -1,0 +1,20 @@
+# Dependensi
+node_modules
+npm-debug.log
+.npm
+
+# Build artifacts
+dist
+temp
+
+# Konfigurasi
+.env
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
