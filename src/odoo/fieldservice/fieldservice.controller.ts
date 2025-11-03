@@ -12,11 +12,15 @@ export class FieldServiceController {
     @Query('se_id') se_id?: number,
     @Query('status_id') status_id?: string,
     @Query('customer_id') customer_id?: string,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
   ) {
     return this.fs.list(Number(page), Number(limit), {
       se_id,
       status_id,
       customer_id,
+      year,
+      month,
     });
   }
 
@@ -48,8 +52,8 @@ export class FieldServiceController {
   }
 
   @Get('/product/list')
-  async getProductDemo() {
-    return this.fs.getProductDemo();
+  async getProductDemo(@Query('is_competitor') isCompetitor?: string) {
+    return this.fs.getProductDemo(isCompetitor);
   }
   @Get('/directselling/list')
   async listDirectSeling(@Query('fieldservice_id') fieldservice_id?: number) {

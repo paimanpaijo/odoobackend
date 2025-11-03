@@ -10,7 +10,7 @@ export class ProductsService {
       'search_read',
       [[['type', '=', 'consu']]],
       {
-        fields: ['id', 'name', 'list_price'],
+        fields: ['id', 'name', 'list_price', 'qty_available'],
         limit,
       },
     );

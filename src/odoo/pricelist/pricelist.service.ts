@@ -56,7 +56,6 @@ export class PricelistService {
           ['pricelist_id', '=', pricelistId],
           ['date_start', '<=', today],
           ['date_end', '>=', today],
-          ['product_tmpl_id', '=', pid],
         ],
       ], // filter
       {
@@ -67,6 +66,7 @@ export class PricelistService {
           'date_end',
           'price',
           'fixed_price',
+          'product_tmpl_id',
         ],
       },
     );

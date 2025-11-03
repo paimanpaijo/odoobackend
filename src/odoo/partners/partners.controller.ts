@@ -26,12 +26,13 @@ export class PartnersController {
   // // ✅ GET /odoo/partners/all
   @Get()
   async findAll(
-    @Query('cust_only') rank: number = 1,
+    @Query('cust_only') cust_only: number = 1,
     @Query('employeeId') employeeId: number = 0,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
+    @Query('search') search?: string,
   ) {
-    return this.odoo.findAll(rank, employeeId, page, limit);
+    return this.odoo.findAll(cust_only, employeeId, page, limit, search);
   }
 
   // ✅ GET /odoo/partners/:id
@@ -44,6 +45,11 @@ export class PartnersController {
   @Post()
   async create(@Body() payload: { name: string; email?: string }) {
     return this.odoo.create(payload);
+  }
+
+  @Post('create')
+  async createCustomer(@Body() data: any) {
+    return await this.odoo.createCustomer(data);
   }
 
   // // ✅ PUT /odoo/partners/:id

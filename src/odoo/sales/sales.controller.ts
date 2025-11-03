@@ -7,7 +7,7 @@ import {
   Param,
   Body,
   Query,
-  Logger
+  Logger,
 } from '@nestjs/common';
 import { SalesService } from './sales.service';
 
@@ -29,28 +29,22 @@ export class SalesController {
       customer,
     });
   }
-   @Post()
+  @Post()
   async createSO(@Body() body: any) {
-   console.log('BODY DITERIMA:', body);	 
-  console.log('RECEIVED BODY:', body);
-console.log('ITEMS TYPE:', typeof body.items);
-console.log('ITEMS IS ARRAY:', Array.isArray(body.items));
-
     const payload = {
-  partner_id: body.partner_id,
-  pricelist_id: body.pricelist_id,
-  payment_term_id: body.payment_term_id,
-  x_studio_sales_executive: body.x_studio_sales_executive,
-  x_studio_retailer_discount: body.x_studio_retailer_discount,
-  x_studio_farmer_discount: body.x_studio_farmer_discount,
-  items: body.items,
-};
-
+      partner_id: body.partner_id,
+      pricelist_id: body.pricelist_id,
+      payment_term_id: body.payment_term_id,
+      x_studio_sales_executive: body.x_studio_sales_executive,
+      x_studio_retailer_discount: body.x_studio_retailer_discount,
+      x_studio_farmer_discount: body.x_studio_farmer_discount,
+      items: body.items,
+    };
 
     return this.sales.createSalesOrder(payload);
   }
 
- // await this.updateSalesOrder(15, { state: 'approved_manager' });
+  // await this.updateSalesOrder(15, { state: 'approved_manager' });
   @Put(':id')
   async updateSO(@Param('id') id: number, @Body() body: any) {
     return this.sales.updateSalesOrder(id, body);
@@ -73,5 +67,16 @@ console.log('ITEMS IS ARRAY:', Array.isArray(body.items));
       sales_exec: sales_exec ? Number(sales_exec) : undefined,
       state,
     });
+  }
+
+  @Get('summarysales')
+  async getSummary(
+    @Query('year') year: string,
+    @Query('month') month?: string,
+    @Query('sales_exec') sales_exec?: number,
+  ) {
+    const y = parseInt(year);
+    const m = month ? parseInt(month) : undefined;
+    return this.sales.getSalesSummarySales(y, m, sales_exec);
   }
 }

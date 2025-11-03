@@ -1,4 +1,4 @@
-
+// 🧾 Interface utama
 export interface SalesSummary {
   id: number;
   no_sales_order: string;
@@ -13,5 +13,21 @@ export interface SalesSummary {
   state: string;
   state_label: string;
   tanggal_order: string;
+
+  // 🔹 Custom field dari res.partner
+  agreement: boolean | false;
+
+  // 🔹 Detail item dari sale.order.line
+  items: SalesOrderItem[];
 }
 
+// 🧩 Interface detail item
+export interface SalesOrderItem {
+  product_id: number | null;
+  product_name: string;
+  quantity: number;
+  discount: number;
+  price_unit: number;
+  total_price: number;
+  quantity_available: number;
+}

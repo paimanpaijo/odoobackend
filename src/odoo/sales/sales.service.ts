@@ -1,11 +1,11 @@
-import { Injectable , Logger} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { OdooService } from '../odoo.service';
 import { SalesSummary } from './sales.types';
 
 @Injectable()
 export class SalesService {
   constructor(private readonly odoo: OdooService) {}
-private readonly logger = new Logger(SalesService.name);
+  private readonly logger = new Logger(SalesService.name);
   async getSales(limit = 10, page = 1, filters: any = {}) {
     const offset = (page - 1) * limit;
 
@@ -54,7 +54,7 @@ private readonly logger = new Logger(SalesService.name);
     };
   }
 
-    async createSalesOrder(payload: {
+  async createSalesOrder(payload: {
     partner_id: number;
     pricelist_id: number;
     payment_term_id?: number;
@@ -87,8 +87,8 @@ private readonly logger = new Logger(SalesService.name);
         pricelist_id: payload.pricelist_id,
         payment_term_id: payload.payment_term_id || false,
         x_studio_sales_executive: payload.x_studio_sales_executive || false,
-	x_studio_farmer_discount: payload.x_studio_farmer_discount || false,
-	x_studio_retailer_discount: payload.x_studio_retailer_discount || false,
+        x_studio_farmer_discount: payload.x_studio_farmer_discount || false,
+        x_studio_retailer_discount: payload.x_studio_retailer_discount || false,
         order_line: orderLines,
         state: 'draft', // default awal draft
       };
@@ -120,44 +120,47 @@ private readonly logger = new Logger(SalesService.name);
   }
 
   private async getStateLabels(): Promise<Record<string, string>> {
-  const result = await this.odoo.call('ir.model.fields', 'search_read', [
-    [['model', '=', 'sale.order'], ['name', '=', 'state']],
-    ['selection'],
-  ]);
+    const result = await this.odoo.call('ir.model.fields', 'search_read', [
+      [
+        ['model', '=', 'sale.order'],
+        ['name', '=', 'state'],
+      ],
+      ['selection'],
+    ]);
 
-  let selections = result?.[0]?.selection;
+    let selections = result?.[0]?.selection;
 
-  // ✅ Kadang selection berbentuk string Python, kita parse manual
-  if (typeof selections === 'string') {
-    // ubah dari "[(...)]" ke JSON valid
-    selections = selections
-      .replaceAll("'", '"')
-      .replaceAll('(', '[')
-      .replaceAll(')', ']');
+    // ✅ Kadang selection berbentuk string Python, kita parse manual
+    if (typeof selections === 'string') {
+      // ubah dari "[(...)]" ke JSON valid
+      selections = selections
+        .replaceAll("'", '"')
+        .replaceAll('(', '[')
+        .replaceAll(')', ']');
 
-    try {
-      selections = JSON.parse(selections);
-    } catch (e) {
-      console.warn('⚠️ Gagal parse selection:', e);
-      selections = [];
-    }
-  }
-
-  const stateMap: Record<string, string> = {};
-
-  if (Array.isArray(selections)) {
-    for (const item of selections) {
-      if (Array.isArray(item) && item.length === 2) {
-        const [key, label] = item;
-        stateMap[key] = label;
+      try {
+        selections = JSON.parse(selections);
+      } catch (e) {
+        console.warn('⚠️ Gagal parse selection:', e);
+        selections = [];
       }
     }
+
+    const stateMap: Record<string, string> = {};
+
+    if (Array.isArray(selections)) {
+      for (const item of selections) {
+        if (Array.isArray(item) && item.length === 2) {
+          const [key, label] = item;
+          stateMap[key] = label;
+        }
+      }
+    }
+
+    return stateMap;
   }
 
-  return stateMap;
-}
-
-    async getSalesSummary(
+  async getSalesSummary(
     limit = 10,
     page = 1,
     filters: {
@@ -214,7 +217,7 @@ private readonly logger = new Logger(SalesService.name);
         [domain],
       );
 
-      // 📋 Ambil data
+      // 📋 Ambil data sales order
       const data = await this.odoo.call('sale.order', 'search_read', [domain], {
         fields: [
           'id',
@@ -232,8 +235,119 @@ private readonly logger = new Logger(SalesService.name);
         order: 'date_order desc',
       });
 
+      if (!data.length) {
+        return {
+          status: 200,
+          success: true,
+          page,
+          limit,
+          total_all_data,
+          total_page: 1,
+          data: [],
+        };
+      }
+
       const result: SalesSummary[] = [];
-const stateLabels = await this.getStateLabels();
+      const stateLabels = await this.getStateLabels();
+
+      // Ambil semua partner_id unik
+      const partnerIds = [
+        ...new Set(
+          data
+            .filter((so) => Array.isArray(so.partner_id))
+            .map((so) => so.partner_id[0]),
+        ),
+      ];
+
+      // 🔍 Ambil data partner (termasuk custom field x_studio_agreement_signed)
+      const partnersData = await this.odoo.call('res.partner', 'read', [
+        partnerIds,
+        ['x_studio_agreement_signed'],
+      ]);
+
+      const agreementMap = partnersData.reduce(
+        (acc, p) => {
+          acc[p.id] = p.x_studio_agreement_signed || '';
+          return acc;
+        },
+        {} as Record<number, string>,
+      );
+
+      // Ambil semua order_id untuk fetch order lines
+      const orderIds = data.map((so) => so.id);
+
+      // 🔹 Ambil detail item (sale.order.line)
+      const orderLines = await this.odoo.call(
+        'sale.order.line',
+        'search_read',
+        [[['order_id', 'in', orderIds]]],
+        {
+          fields: [
+            'order_id',
+            'product_id',
+            'product_uom_qty',
+            'price_unit',
+            'discount',
+            'price_total',
+          ],
+        },
+      );
+
+      // Ambil semua product_id unik dari order lines
+      const productIds = [
+        ...new Set(
+          orderLines
+            .filter((l) => Array.isArray(l.product_id))
+            .map((l) => l.product_id[0]),
+        ),
+      ];
+
+      // 🔹 Ambil qty_available dari product.product
+      const productsData = await this.odoo.call('product.product', 'read', [
+        productIds,
+        ['qty_available'],
+      ]);
+
+      const qtyMap = productsData.reduce(
+        (acc, p) => {
+          acc[p.id] = p.qty_available || 0;
+          return acc;
+        },
+        {} as Record<number, number>,
+      );
+
+      // Group order lines by order_id
+      const linesByOrder = orderLines.reduce(
+        (acc, l) => {
+          const orderId = Array.isArray(l.order_id) ? l.order_id[0] : null;
+          if (!orderId) return acc;
+
+          if (!acc[orderId]) acc[orderId] = [];
+
+          const productId = Array.isArray(l.product_id)
+            ? l.product_id[0]
+            : null;
+          const productName = Array.isArray(l.product_id)
+            ? l.product_id[1]
+            : '';
+          const qtyAvailable = qtyMap[productId] || 0;
+
+          acc[orderId].push({
+            product_id: productId,
+            product_name: productName,
+            quantity: l.product_uom_qty,
+            discount: l.discount,
+            price_unit: l.price_unit,
+            total_price: l.price_total,
+            quantity_available: qtyAvailable,
+          });
+
+          return acc;
+        },
+        {} as Record<number, any[]>,
+      );
+
+      // 🔄 Bangun hasil akhir per Sales Order
       for (const so of data) {
         let hutang = 0;
 
@@ -249,7 +363,6 @@ const stateLabels = await this.getStateLabels();
           );
         }
 
-        // 🧱 ambil pasangan ID dan nama (many2one)
         const customer_id = Array.isArray(so.partner_id)
           ? so.partner_id[0]
           : null;
@@ -271,6 +384,8 @@ const stateLabels = await this.getStateLabels();
           ? so.payment_term_id[1]
           : null;
 
+        const agreement = customer_id ? agreementMap[customer_id] || '' : '';
+
         result.push({
           id: so.id,
           no_sales_order: so.name,
@@ -283,8 +398,10 @@ const stateLabels = await this.getStateLabels();
           total_pembayaran: so.amount_total,
           hutang,
           state: so.state,
-	   state_label: stateLabels[so.state] || so.state, // ✅ tampilkan label deskriptif
+          state_label: stateLabels[so.state] || so.state,
           tanggal_order: so.date_order?.split(' ')[0] || '',
+          agreement,
+          items: linesByOrder[so.id] || [],
         });
       }
 
@@ -308,6 +425,88 @@ const stateLabels = await this.getStateLabels();
         total_page: 0,
         data: [],
       };
+    }
+  }
+
+  /**
+   * Get sales summary per status by month/year
+   */
+  async getSalesSummarySales(
+    year: number,
+    month?: number,
+    sales_exec?: number,
+  ) {
+    try {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      let startDate: string;
+      let endDate: string;
+
+      if (month) {
+        const lastDay = new Date(year, month, 0).getDate();
+        startDate = `${year}-${pad(month)}-01 00:00:00`;
+        endDate = `${year}-${pad(month)}-${pad(lastDay)} 23:59:59`;
+      } else {
+        startDate = `${year}-01-01 00:00:00`;
+        endDate = `${year}-12-31 23:59:59`;
+      }
+
+      this.logger.log(`📅 Range tanggal: ${startDate} - ${endDate}`);
+
+      const domain: any[] = [
+        ['date_order', '>=', startDate],
+        ['date_order', '<=', endDate],
+      ];
+
+      if (sales_exec && sales_exec > 0) {
+        domain.push(['x_studio_sales_executive', '=', sales_exec]);
+      }
+
+      const fields = ['id', 'name', 'state', 'amount_total', 'date_order'];
+      const orders = await this.odoo.call('sale.order', 'search_read', [
+        domain,
+        fields,
+      ]);
+
+      this.logger.log(`🧾 Orders found: ${orders.length}`);
+
+      // 🔹 Mapping status → deskripsi
+      const statusDescriptions: Record<string, string> = {
+        draft: 'Quotation',
+        sent: 'Quotation Sent',
+        sale: 'Sales Order',
+        done: 'Completed',
+        cancel: 'Cancelled',
+      };
+
+      // 🔹 Hitung total per status
+      const summaryMap: Record<string, number> = {};
+      orders.forEach((order) => {
+        const status = order.state || 'unknown';
+        summaryMap[status] =
+          (summaryMap[status] || 0) + (order.amount_total || 0);
+      });
+
+      // 🔹 Format hasil akhir
+      const summary = Object.entries(summaryMap).map(([status, total]) => ({
+        status,
+        description: statusDescriptions[status] || 'Unknown Status',
+        total,
+      }));
+
+      const total_all = summary.reduce((a, b) => a + b.total, 0);
+      const total = orders.length;
+
+      return {
+        success: true,
+        period: month ? `${year}-${pad(month)}` : `${year}`,
+        summary,
+        total_all,
+        total,
+        orders,
+      };
+    } catch (error) {
+      console.error('❌ Error getSalesSummarySales:', error);
+      return { success: false, message: 'Failed to get sales summary', error };
     }
   }
 }

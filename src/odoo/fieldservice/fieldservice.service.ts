@@ -29,14 +29,57 @@ export class FieldServiceService {
       if (filters?.customer_id)
         domain.push(['partner_id', '=', filters.customer_id]);
 
+      if (filters.month && filters.year) {
+        const { year, month } = filters;
+        const lastDay = new Date(year, month, 0).getDate();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const start = `${year}-${pad(month)}-01 00:00:00`;
+        const end = `${year}-${pad(month)}-${pad(lastDay)} 23:59:59`;
+
+        domain.push(['x_studio_activity_date', '>=', start]);
+        domain.push(['x_studio_activity_date', '<=', end]);
+      }
+
       const tasks = await this.odoo.call(
         'project.task',
         'search_read',
         [domain],
         {
           fields: [
-            // x_studio_direct_seling,
-            //x_studio_single_demo,
+            'id',
+            'name',
+            'partner_id',
+            'stage_id',
+            'description',
+            'planned_date_begin',
+            'partner_name',
+            'partner_phone',
+            'partner_company_name',
+            'partner_city',
+            'partner_zip',
+            'partner_street',
+            'partner_street2',
+            'partner_country_id',
+            'project_id',
+            'x_studio_sales_executive',
+            'x_studio_lat',
+            'x_studio_lang',
+            'x_studio_luas_lahan_ha',
+            'x_studio_attendant',
+            'x_studio_start_time',
+            'x_studio_activity_date',
+            'x_studio_direct_seling',
+            'x_studio_single_demo',
+            'x_studio_image',
+            'x_studio_regency_1',
+            'x_studio_address',
+            'x_studio_district',
+
+            'x_studio_province',
+
+            'x_studio_start_time',
+
+            'x_studio_end_time',
           ],
           limit,
           offset,
@@ -86,8 +129,7 @@ export class FieldServiceService {
           'x_studio_attendant',
           'x_studio_start_time',
           'x_studio_activity_date',
-          'x_studio_q',
-          // x_studio_direct_seling
+          'x_studio_direct_seling',
         ],
       });
       return { success: true, status: 200, data: task };
@@ -112,13 +154,14 @@ export class FieldServiceService {
 
           'project_id',
           'x_studio_sales_executive',
+          'x_studio_lat',
           'x_studio_lang',
           'x_studio_luas_lahan_ha',
           'x_studio_attendant',
           'x_studio_start_time',
           'x_studio_activity_date',
-          'x_studio_q',
-          'x_studio_x_studio',
+          'x_studio_direct_seling',
+          'x_studio_single_demo',
           'x_studio_image',
         ],
       });
@@ -128,8 +171,8 @@ export class FieldServiceService {
       // =========================
       // 2️⃣ Ambil semua ID relasi
       // =========================
-      const directIds: number[] = task.x_studio_q || [];
-      const demoIds: number[] = task.x_studio_x_studio || [];
+      const directIds: number[] = task.x_studio_direct_seling || [];
+      const demoIds: number[] = task.x_studio_single_demo || [];
 
       // =========================
       // 3️⃣ Deklarasi tipe aman
@@ -188,8 +231,8 @@ export class FieldServiceService {
             fields: [
               'id',
               'x_studio_product',
-              'x_studio_x_ubinan',
-              'x_studio_x_rendemen',
+              'x_studio_ubinan',
+              'x_studio_rendemen',
               'x_name',
             ],
           },
@@ -200,8 +243,8 @@ export class FieldServiceService {
             id: d.id,
             product_id: d.x_studio_product?.[0] || null,
             product_name: d.x_studio_product?.[1] || '',
-            ubinan: d.x_studio_x_ubinan,
-            rendemen: d.x_studio_x_rendemen,
+            ubinan: d.x_studio_ubinan,
+            rendemen: d.x_studio_rendemen,
             description: d.x_name,
           }),
         );
@@ -348,11 +391,20 @@ export class FieldServiceService {
     };
   }
 
-  async getProductDemo() {
+  async getProductDemo(isCompetitor?: string) {
+    const domain: any[] = [];
+    console.log('iscompetitor', isCompetitor);
+    if (isCompetitor) {
+      if (isCompetitor === '1') {
+        domain.push(['x_studio_product_competitor', '=', true]);
+      } else if (isCompetitor === '0') {
+        domain.push(['x_studio_product_competitor', '=', false]);
+      }
+    }
     const data = await this.odoo.call(
       'x_product_demo', // 👈 nama model
       'search_read',
-      [], // domain (filter) opsional
+      [domain], // domain (filter) opsional
       {
         fields: ['id', 'x_name', 'x_studio_product_competitor'],
         limit: 20,
@@ -408,8 +460,8 @@ export class FieldServiceService {
             'id',
             'x_studio_field_service',
             'x_studio_product',
-            'x_studio_x_ubinan',
-            'x_studio_x_rendemen',
+            'x_studio_ubinan',
+            'x_studio_rendemen',
           ],
 
           order: 'id desc',
@@ -473,8 +525,8 @@ export class FieldServiceService {
             'x_studio_district',
             'x_studio_lat',
             'x_studio_address',
-            'x_studio_q', // direct selling ref
-            'x_studio_x_studio', // demo ref
+            'x_studio_direct_seling', // direct selling ref
+            'x_studio_single_demo', // demo ref
           ],
           limit,
           offset,
@@ -526,8 +578,8 @@ export class FieldServiceService {
             'id',
             'x_studio_field_service',
             'x_studio_product',
-            'x_studio_x_ubinan',
-            'x_studio_x_rendemen',
+            'x_studio_ubinan',
+            'x_studio_rendemen',
             'x_product_demo',
           ],
           order: 'id desc',
@@ -642,13 +694,14 @@ export class FieldServiceService {
   }
   async update(payload: any) {
     try {
-      const { id, direct_selling_items, demo, ...data } = payload;
+      const { id, direct_selling_items, demo, timesheet_entries, ...data } =
+        payload;
       if (!id) throw new Error('Missing task ID');
 
-      // 🔹 Konversi direct_selling_items → Odoo One2many command
+      // 🔹 Handle direct selling items
       if (Array.isArray(direct_selling_items)) {
-        data.x_studio_q = [
-          [5, 0, 0], // hapus semua data lama dulu (opsional, bisa dihapus kalau mau update satu-satu)
+        data.x_studio_direct_seling = [
+          [5, 0, 0],
           ...direct_selling_items.map((item) => [
             0,
             0,
@@ -659,33 +712,61 @@ export class FieldServiceService {
           ]),
         ];
       }
+
+      // 🔹 Handle demo items
       if (Array.isArray(demo)) {
-        data.x_studio_x_studio = [
-          [5, 0, 0], // hapus semua dulu
+        data.x_studio_single_demo = [
+          [5, 0, 0],
           ...demo.map((item) => [
             0,
             0,
             {
               x_studio_product: item.x_studio_product,
-              x_studio_x_ubinan: item.x_studio_ubinan,
-              x_studio_x_rendemen: item.x_studio_rendemen,
-              x_name: item.product_name || 'No Description', // ✅ tambahkan ini
+              x_studio_ubinan: item.x_studio_ubinan,
+              x_studio_rendemen: item.x_studio_rendemen,
+              x_name: item.product_name || 'No Description',
             },
           ]),
         ];
       }
 
+      // 🔹 Update project.task
       const result = await this.odoo.call('project.task', 'write', [
         [id],
         data,
       ]);
-
       if (!result) throw new Error('Odoo write operation failed');
+
+      // ✅ Tambahkan Timesheet entries (account.analytic.line)
+      if (Array.isArray(timesheet_entries) && timesheet_entries.length > 0) {
+        // Ambil info task (buat dapat project_id)
+        const taskData = await this.odoo.call('project.task', 'read', [
+          [id],
+          ['project_id'],
+        ]);
+
+        const projectId = taskData?.[0]?.project_id?.[0];
+        if (!projectId)
+          throw new Error('Task project_id not found for timesheet');
+
+        for (const entry of timesheet_entries) {
+          await this.odoo.call('account.analytic.line', 'create', [
+            {
+              name: entry.description || 'Work log',
+              project_id: projectId,
+              task_id: id,
+              employee_id: entry.employee_id || false,
+              unit_amount: entry.hours || 0, // jumlah jam kerja
+              date: entry.date || new Date().toISOString().slice(0, 10), // format YYYY-MM-DD
+            },
+          ]);
+        }
+      }
 
       return {
         success: true,
         status: 200,
-        message: 'Field Service updated successfully',
+        message: 'Field Service and Timesheet updated successfully',
       };
     } catch (error) {
       this.logger.error(`❌ Error: ${error.message}`);

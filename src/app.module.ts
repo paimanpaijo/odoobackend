@@ -11,6 +11,7 @@ import { EmployeeModule } from './odoo/employee/employee.module';
 import { SalesModule } from './odoo/sales/sales.module';
 import { CustomersModule } from './odoo/customers/customers.module';
 import { FieldServiceModule } from './odoo/fieldservice/fieldservice.module';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { FieldServiceModule } from './odoo/fieldservice/fieldservice.module';
     SalesModule,
     CustomersModule,
     FieldServiceModule,
+    UploadModule,
 
     RouterModule.register([
       {
@@ -40,6 +42,7 @@ import { FieldServiceModule } from './odoo/fieldservice/fieldservice.module';
           { path: 'sales', module: SalesModule },
           { path: 'customers', module: CustomersModule },
           { path: 'fieldservice', module: FieldServiceModule },
+          { path: 'upload', module: UploadModule },
         ],
       },
     ]),
