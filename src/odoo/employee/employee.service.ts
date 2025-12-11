@@ -41,10 +41,10 @@ export class EmployeeService {
   }
   async getEmail(email: string) {
     try {
-      const domain: any[] = [];
-      domain.push(['work_email', '=', email]);
-      const id = await this.odoo.call('hr.employee', 'search', [domain]);
-      if (id.length === 0) {
+      const domain: any[] = [['work_email', '=', email]];
+
+      const ids = await this.odoo.call('hr.employee', 'search', [domain]);
+      if (ids.length === 0) {
         return {
           success: false,
           status: 404,
@@ -52,7 +52,7 @@ export class EmployeeService {
         };
       }
 
-      const [employee] = await this.odoo.call('hr.employee', 'read', [id], {
+      const [employee] = await this.odoo.call('hr.employee', 'read', [ids], {
         fields: [
           'id',
           'name',
@@ -62,10 +62,35 @@ export class EmployeeService {
           'job_title',
           'department_id',
           'parent_id',
+          'job_id',
+          'child_ids',
         ],
       });
 
-      return { success: true, status: 200, data: employee };
+      // 🔽 Ambil data anak-anaknya (child_ids)
+      let childData: any[] = [];
+      if (employee.child_ids && employee.child_ids.length > 0) {
+        childData = await this.odoo.call(
+          'hr.employee',
+          'read',
+          [employee.child_ids],
+          {
+            fields: ['id', 'name', 'work_email', 'work_phone', 'mobile_phone'],
+          },
+        );
+      }
+
+      // 🔽 Tambahkan child detail ke object utama
+      const result = {
+        ...employee,
+        child_details: childData,
+      };
+
+      return {
+        success: true,
+        status: 200,
+        data: result,
+      };
     } catch (error) {
       this.logger.error(`❌ Error: ${error.message}`);
       return { success: false, status: 500, message: error.message };

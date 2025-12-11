@@ -23,7 +23,7 @@ export class PricelistController {
   }
 
   @Get('pricelistitem')
-  async getpricelistt(@Query('id') id: number, @Query('prod_id') pid: number) {
+  async getpricelist(@Query('id') id: number, @Query('prod_id') pid: number) {
     return this.pricelist.getPriceListItems(id, pid);
   }
 }

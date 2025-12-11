@@ -469,7 +469,6 @@ export class SalesService {
 
       this.logger.log(`🧾 Orders found: ${orders.length}`);
 
-      // 🔹 Mapping status → deskripsi
       const statusDescriptions: Record<string, string> = {
         draft: 'Quotation',
         sent: 'Quotation Sent',
@@ -478,20 +477,76 @@ export class SalesService {
         cancel: 'Cancelled',
       };
 
-      // 🔹 Hitung total per status
-      const summaryMap: Record<string, number> = {};
-      orders.forEach((order) => {
-        const status = order.state || 'unknown';
-        summaryMap[status] =
-          (summaryMap[status] || 0) + (order.amount_total || 0);
-      });
+      // 🔹 Inisialisasi peta untuk total amount dan total weight per status
+      const summaryMap: Record<
+        string,
+        { total_amount: number; total_weight: number }
+      > = {};
+      let total_weight_all = 0;
 
-      // 🔹 Format hasil akhir
-      const summary = Object.entries(summaryMap).map(([status, total]) => ({
-        status,
-        description: statusDescriptions[status] || 'Unknown Status',
-        total,
-      }));
+      // ✅ Cache berat produk
+      const productWeightCache: Record<number, number> = {};
+
+      // 🔹 Loop tiap order
+      for (const order of orders) {
+        const status = order.state || 'unknown';
+
+        // pastikan status ada di summaryMap
+        if (!summaryMap[status]) {
+          summaryMap[status] = { total_amount: 0, total_weight: 0 };
+        }
+
+        // Tambahkan total amount per status
+        summaryMap[status].total_amount += order.amount_total || 0;
+
+        // 🔹 Ambil order line
+        const orderLines = await this.odoo.call(
+          'sale.order.line',
+          'search_read',
+          [[['order_id', '=', order.id]], ['product_id', 'product_uom_qty']],
+        );
+
+        let totalWeightOrder = 0;
+
+        for (const line of orderLines) {
+          const productId = Array.isArray(line.product_id)
+            ? line.product_id[0]
+            : line.product_id;
+
+          if (!productId) continue;
+
+          // 🔹 Gunakan cache untuk berat produk
+          if (!productWeightCache[productId]) {
+            const productData = await this.odoo.call(
+              'product.product',
+              'read',
+              [[productId], ['weight']],
+            );
+            productWeightCache[productId] = productData?.[0]?.weight || 0;
+          }
+
+          const weight = productWeightCache[productId];
+          totalWeightOrder += weight * (line.product_uom_qty || 0);
+        }
+
+        total_weight_all += totalWeightOrder;
+
+        // 🔹 Tambahkan berat per status
+        summaryMap[status].total_weight += totalWeightOrder;
+
+        // 🔹 Simpan berat per order untuk referensi
+        order.total_weight = totalWeightOrder;
+      }
+
+      // 🔹 Bentuk hasil summary
+      const summary = Object.entries(summaryMap).map(
+        ([status, { total_amount, total_weight }]) => ({
+          status,
+          description: statusDescriptions[status] || 'Unknown Status',
+          total: total_amount,
+          total_weight,
+        }),
+      );
 
       const total_all = summary.reduce((a, b) => a + b.total, 0);
       const total = orders.length;
@@ -502,11 +557,430 @@ export class SalesService {
         summary,
         total_all,
         total,
-        orders,
+        total_weight_all, // 🔹 total berat semua order
+        orders, // 🔹 tiap order juga punya total_weight
       };
     } catch (error) {
       console.error('❌ Error getSalesSummarySales:', error);
       return { success: false, message: 'Failed to get sales summary', error };
+    }
+  }
+
+  // Asumsi: field m2o di sale.order yang menunjuk ke employee adalah ini:
+
+  // Asumsi: field m2o di sale.order yang menunjuk ke employee adalah ini:
+  // ganti kalau beda
+  async getSalesManager(limit = 10, page = 1, filters: any = {}) {
+    const offset = (page - 1) * limit;
+    const domain: any[] = [];
+    const SALES_EXEC_FIELD = 'x_studio_sales_executive';
+    // --- filter umum ---
+    if (filters.search) {
+      domain.push(['name', 'ilike', filters.search]);
+    }
+    if (filters.status) {
+      domain.push(['state', '=', filters.status]);
+    }
+    if (filters.customer) {
+      domain.push(['partner_id', 'ilike', filters.customer]);
+    }
+
+    // --- filter hierarki berdasarkan level + childs ---
+    // filters.level: 'dsm' | 'sm'
+    // filters.childs: number[] (ID hr.employee anak langsung user)
+    if (
+      filters.level &&
+      Array.isArray(filters.childs) &&
+      filters.childs.length
+    ) {
+      const execIds = await this._resolveExecutiveIds(
+        filters.level,
+        filters.childs,
+      );
+
+      // Jika tidak ada executive yang ditemukan, return kosong cepat
+      if (!execIds.length) {
+        return {
+          status: 200,
+          success: true,
+          page,
+          total: 0,
+          total_page: 0,
+          data: [],
+        };
+      }
+
+      domain.push([SALES_EXEC_FIELD, 'in', execIds]);
+    }
+
+    // --- hitung dan ambil data ---
+    const total = await this.odoo.call('sale.order', 'search_count', [domain]);
+
+    const data = await this.odoo.call('sale.order', 'search_read', [domain], {
+      fields: [
+        'id',
+        'name',
+        'partner_id',
+        'date_order',
+        'amount_total',
+        'state',
+        SALES_EXEC_FIELD,
+      ],
+      limit,
+      offset,
+      order: 'date_order desc',
+    });
+
+    return {
+      status: 200,
+      success: true,
+      page,
+      total,
+      total_page: Math.ceil(total / limit),
+      data,
+    };
+  }
+
+  /**
+   * Kembalikan daftar ID employee yang berperan sebagai "sales executive"
+   * sesuai level & childs yang diberikan.
+   *
+   * - level='dsm' → eksekutif yg parent/atasannya ada di `childs` (anak langsung DSM)
+   * - level='sm'  → eksekutif yg parent ada di DSM yg menjadi anak SM (`childs` SM)
+   *
+   * Catatan:
+   * - Kita gunakan hr.employee, field `parent_id` utk hirarki.
+   * - Kita batasi ke "Sales Executive" via (x_level == 'sales_executive') ATAU job_id.name ilike.
+   */
+  private async _resolveExecutiveIds(
+    level: string,
+    childs: number[],
+  ): Promise<number[]> {
+    // Helper untuk cari karyawan dengan parent_id dalam parentIds
+    const findEmployeesByParents = async (parentIds: number[]) => {
+      // Ambil employee yg parent_id di parentIds
+      const employees = await this.odoo.call(
+        'hr.employee',
+        'search_read',
+        [[['parent_id', 'in', parentIds]]],
+        { fields: ['id', 'name', 'job_id', 'parent_id', 'x_level'] },
+      );
+      return employees as Array<{
+        id: number;
+        name: string;
+        job_id: any;
+        parent_id: any;
+        x_level?: string;
+      }>;
+    };
+
+    // Helper: filter hanya Sales Executive
+    const onlyExecutives = (rows: any[]) =>
+      rows.filter((r) => {
+        const lvl = (r.x_level || '').toString().toLowerCase();
+        const jobName = Array.isArray(r.job_id)
+          ? String(r.job_id[1] || '').toLowerCase()
+          : '';
+        return lvl === 'sales_executive' || jobName.includes('sales executive');
+      });
+
+    if (level.toLowerCase() === 'dsm') {
+      // `childs` = ID DSM anak dari user-DSM? atau langsung anak DSM (eksekutif)?
+      // Ambil semua anak langsung dari `childs` → lalu saring hanya yang Sales Executive.
+      const directChildren = await findEmployeesByParents(childs);
+      const executives = onlyExecutives(directChildren);
+
+      // Jika langsung `childs` ternyata sudah executive (tanpa anak), fallback:
+      const guessExecIfDirect = executives.length
+        ? executives.map((e) => e.id)
+        : childs;
+
+      return Array.from(new Set(guessExecIfDirect));
+    }
+
+    if (level.toLowerCase() === 'sm') {
+      // `childs` di sini adalah daftar DSM di bawah SM.
+      // Kita perlu anak dari para DSM (yang merupakan Sales Executive).
+      const dsmChildren = await findEmployeesByParents(childs); // anak dari DSM (bisa SE)
+      const executives = onlyExecutives(dsmChildren);
+
+      // Jika struktur 3 tingkat (SM -> DSM -> Supervisor -> SE), bisa lanjutkan 1 tingkat lagi:
+      // Cari cucu: anak dari dsmChildren yang bukan SE
+      const nonExecIds = dsmChildren
+        .filter((r) => !onlyExecutives([r]).length)
+        .map((r) => r.id);
+
+      let grandChildren: any[] = [];
+      if (nonExecIds.length) {
+        const temp = await findEmployeesByParents(nonExecIds);
+        grandChildren = temp;
+      }
+
+      const moreExecs = onlyExecutives(grandChildren);
+
+      const allExecIds = [
+        ...executives.map((e) => e.id),
+        ...moreExecs.map((e) => e.id),
+      ];
+      return Array.from(new Set(allExecIds));
+    }
+
+    // Level lain: tidak mem-filter apa pun
+    return [];
+  }
+
+  async getInvoiceSummarySales(sales_exec?: number) {
+    try {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      const domain: any[] = [
+        ['move_type', '=', 'out_invoice'],
+        ['state', '!=', 'cancel'],
+        ['amount_residual', '>', 0], // masih ada sisa tagihan
+        ['invoice_date', '<=', todayStr], // tidak ambil masa depan
+      ];
+
+      if (sales_exec && sales_exec > 0) {
+        const customers = await this.odoo.call('res.partner', 'search_read', [
+          [['x_studio_sales_executive', '=', sales_exec]],
+          ['id'],
+        ]);
+        const customerIds = customers.map((c) => c.id);
+        if (customerIds.length > 0)
+          domain.push(['partner_id', 'in', customerIds]);
+        else
+          return {
+            success: true,
+            summary: [],
+            message: `No customers found for sales executive ID ${sales_exec}`,
+          };
+      }
+
+      const fields = [
+        'amount_total',
+        'amount_residual',
+        'invoice_date_due',
+        'invoice_date',
+      ];
+
+      const invoices = await this.odoo.call('account.move', 'search_read', [
+        domain,
+        fields,
+      ]);
+
+      // --- hanya unpaid & overdue ---
+      const summaryMap = {
+        unpaid: { total_amount: 0, total_paid: 0, total_unpaid: 0, count: 0 },
+        overdue: { total_amount: 0, total_paid: 0, total_unpaid: 0, count: 0 },
+      };
+
+      for (const inv of invoices) {
+        const total = inv.amount_total || 0;
+        const unpaid = inv.amount_residual || 0;
+        const paid = total - unpaid;
+        const dueDate = inv.invoice_date_due
+          ? new Date(inv.invoice_date_due)
+          : null;
+        const isOverdue = dueDate && unpaid > 0 && dueDate < today;
+
+        // --- Outstanding: semua yang masih punya sisa ---
+        if (unpaid > 0) {
+          summaryMap.unpaid.total_amount += total;
+          summaryMap.unpaid.total_paid += paid;
+          summaryMap.unpaid.total_unpaid += unpaid;
+          summaryMap.unpaid.count++;
+        }
+
+        // --- Overdue ---
+        if (isOverdue) {
+          summaryMap.overdue.total_amount += total;
+          summaryMap.overdue.total_paid += paid;
+          summaryMap.overdue.total_unpaid += unpaid;
+          summaryMap.overdue.count++;
+        }
+      }
+
+      const paymentDescriptions = {
+        unpaid: 'Outstanding Amount',
+        overdue: 'Overdue Amount',
+      };
+
+      const summary = Object.entries(summaryMap).map(
+        ([status, { total_amount, total_paid, total_unpaid, count }]) => ({
+          payment_status: status,
+          description: paymentDescriptions[status] || 'Unknown',
+          total_invoices: count,
+          total_amount,
+          total_paid,
+          total_unpaid,
+        }),
+      );
+
+      return {
+        success: true,
+        period: `${todayStr}`,
+        summary,
+      };
+    } catch (error) {
+      console.error('❌ Error getInvoiceSummarySales:', error);
+      return {
+        success: false,
+        message: 'Failed to get invoice summary',
+        error,
+      };
+    }
+  }
+
+  async getInvoicesByMonth(
+    year: number,
+    month?: number,
+    page = 1,
+    limit = 20,
+    sales_exec?: number,
+    status?: string, // ⬅️ filter status optional
+  ) {
+    try {
+      const pad = (n: number) => String(n).padStart(2, '0');
+
+      let startDate: string;
+      let endDate: string;
+      let period: string;
+
+      if (month) {
+        const lastDay = new Date(year, month, 0).getDate();
+        startDate = `${year}-${pad(month)}-01 00:00:00`;
+        endDate = `${year}-${pad(month)}-${pad(lastDay)} 23:59:59`;
+        period = `${year}-${pad(month)}`;
+      } else {
+        startDate = `${year}-01-01 00:00:00`;
+        endDate = `${year}-12-31 23:59:59`;
+        period = `${year}`;
+      }
+
+      const domain: any[] = [
+        ['invoice_date', '>=', startDate],
+        ['invoice_date', '<=', endDate],
+        ['move_type', '=', 'out_invoice'],
+        ['state', '!=', 'cancel'],
+        ['state', '!=', 'draft'],
+        ['payment_state', '!=', 'paid'],
+      ];
+
+      // 🔹 Filter by sales_exec (via customer)
+      if (sales_exec && sales_exec > 0) {
+        const customers = await this.odoo.call('res.partner', 'search_read', [
+          [['x_studio_sales_executive', '=', sales_exec]],
+          ['id'],
+        ]);
+        const customerIds = customers.map((c) => c.id);
+        if (customerIds.length > 0)
+          domain.push(['partner_id', 'in', customerIds]);
+        else
+          return {
+            success: true,
+            period,
+            invoices: [],
+            message: `No customers found for sales executive ID ${sales_exec}`,
+          };
+      }
+
+      const fields = [
+        'id',
+        'name',
+        'invoice_date',
+        'invoice_date_due',
+        'amount_total',
+        'amount_residual',
+        'partner_id',
+        'payment_state',
+        'state',
+      ];
+
+      const offset = (page - 1) * limit;
+      const invoices = await this.odoo.call('account.move', 'search_read', [
+        domain,
+        fields,
+        offset,
+        limit,
+      ]);
+
+      const today = new Date();
+
+      // 🔹 Tentukan status manual
+      const processed = invoices.map((inv) => {
+        const total = inv.amount_total || 0;
+        const unpaid = inv.amount_residual || 0;
+        const paid = total - unpaid;
+
+        const dueDate = inv.invoice_date_due
+          ? new Date(inv.invoice_date_due)
+          : null;
+        const isOverdue = dueDate && unpaid > 0 && dueDate < today;
+
+        let payment_status: 'unpaid' | 'paid_off' | 'paid' | 'overdue';
+        if (isOverdue) payment_status = 'overdue';
+        else if (paid === 0) payment_status = 'unpaid';
+        else if (unpaid === 0) payment_status = 'paid';
+        else payment_status = 'paid_off';
+
+        return {
+          ...inv,
+          total_paid: paid,
+          total_unpaid: unpaid,
+          payment_status,
+          due_date: inv.invoice_date_due,
+          is_overdue: isOverdue,
+        };
+      });
+
+      // 🔹 Filter berdasarkan status jika dikirim dari query
+      const filteredInvoices = processed.filter((inv) => {
+        if (!status) return true;
+        switch (status.toLowerCase()) {
+          case 'paid':
+            return inv.payment_status === 'paid';
+          case 'partial':
+          case 'paid_off':
+          case 'bayar_sebagian':
+            return inv.payment_status === 'paid_off';
+          case 'unpaid':
+          case 'belum_bayar':
+            return inv.payment_status === 'unpaid';
+          case 'overdue':
+            return inv.payment_status === 'overdue';
+          default:
+            return true;
+        }
+      });
+
+      // ✅ Urutkan berdasarkan due date (ascending: paling awal dulu)
+      filteredInvoices.sort((a, b) => {
+        const da = a.invoice_date_due
+          ? new Date(a.invoice_date_due).getTime()
+          : 0;
+        const db = b.invoice_date_due
+          ? new Date(b.invoice_date_due).getTime()
+          : 0;
+        return da - db;
+      });
+
+      // 🔹 Pagination manual setelah sort
+      const total_count = filteredInvoices.length;
+      const paginated = filteredInvoices.slice(offset, offset + limit);
+
+      return {
+        success: true,
+        period,
+        page,
+        limit,
+        total_pages: Math.ceil(total_count / limit),
+        total_invoices: total_count,
+        invoices: paginated,
+      };
+    } catch (error) {
+      console.error('❌ Error getInvoicesByMonth:', error);
+      return { success: false, message: 'Failed to get invoice list', error };
     }
   }
 }

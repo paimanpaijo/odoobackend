@@ -1,7 +1,7 @@
-// app.module.ts
 import { Module } from '@nestjs/common';
 import { RouterModule } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+
 import { OdooModule } from './odoo/odoo.module';
 import { PartnersModule } from './odoo/partners/partners.module';
 import { ProductsModule } from './odoo/products/products.module';
@@ -12,12 +12,15 @@ import { SalesModule } from './odoo/sales/sales.module';
 import { CustomersModule } from './odoo/customers/customers.module';
 import { FieldServiceModule } from './odoo/fieldservice/fieldservice.module';
 import { UploadModule } from './upload/upload.module';
+import { AuthModule } from './auth/auth.module';
+import { ActivityplanModule } from './odoo/activityplan/activityplan.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    OdooModule, // service provider
-    PartnersModule, // module dengan controller
+
+    OdooModule,
+    PartnersModule,
     ProductsModule,
     PricelistModule,
     PaymenttermsModule,
@@ -26,15 +29,13 @@ import { UploadModule } from './upload/upload.module';
     CustomersModule,
     FieldServiceModule,
     UploadModule,
+    ActivityplanModule,
 
     RouterModule.register([
       {
         path: 'odoo',
         children: [
-          {
-            path: 'partners',
-            module: PartnersModule,
-          },
+          { path: 'partners', module: PartnersModule },
           { path: 'products', module: ProductsModule },
           { path: 'pricelist', module: PricelistModule },
           { path: 'paymentterms', module: PaymenttermsModule },
@@ -43,9 +44,12 @@ import { UploadModule } from './upload/upload.module';
           { path: 'customers', module: CustomersModule },
           { path: 'fieldservice', module: FieldServiceModule },
           { path: 'upload', module: UploadModule },
+          { path: 'activityplan', module: ActivityplanModule },
         ],
       },
     ]),
+
+    AuthModule,
   ],
 })
 export class AppModule {}

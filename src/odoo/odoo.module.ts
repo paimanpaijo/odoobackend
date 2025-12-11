@@ -7,6 +7,6 @@ import { OdooService } from './odoo.service';
 @Module({
   imports: [ConfigModule],
   providers: [OdooService],
-  exports: [OdooService], // ✅ supaya bisa dipakai di module lain
+  exports: [OdooService], // âœ… supaya bisa dipakai di module lain
 })
 export class OdooModule {}

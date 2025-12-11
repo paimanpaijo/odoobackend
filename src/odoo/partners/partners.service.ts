@@ -8,14 +8,16 @@ export class PartnersService {
   async findAll(cust_only = 0, employeeId = 0, page = 1, limit = 20, search) {
     try {
       const domain: any[] = [];
+
       if (cust_only === 1) {
         domain.push(['is_company', '=', true]);
       }
-      if (employeeId !== 0)
+
+      if (employeeId !== 0) {
         domain.push(['x_studio_sales_executive', '=', employeeId]);
+      }
 
       if (search) {
-        // Perluas pencarian juga ke kontak utama jika diperlukan, tapi untuk saat ini hanya ke 'name'
         domain.push(['name', 'ilike', search]);
       }
 
@@ -49,81 +51,73 @@ export class PartnersService {
         'parent_id',
         'x_studio_agreement_doc',
         'state_id',
-        'child_ids', // <<< TAMBAH: Untuk mendapatkan daftar ID kontak anak
+        'child_ids',
       ];
 
       const order = 'id desc';
 
-      // hitung total
+      // Hitung total
       const total = await this.odoo.call('res.partner', 'search_count', [
         domain,
       ]);
-      const perPage = limit || 20;
+
+      // Jika limit=0 → ambil semua data
+      const perPage = limit === 0 ? total : limit || 20;
+
+      // Hitung total halaman
       const totalPage = Math.max(1, Math.ceil(total / perPage));
 
-      if (page < 1) page = 1;
-      if (page > totalPage) page = totalPage;
+      // Validasi page
+      page = Math.max(1, Math.min(page, totalPage));
 
       const offset = (page - 1) * perPage;
+
+      // Jika limit=0 → kirim limit=false ke Odoo
+      const odooLimit = limit === 0 ? false : perPage;
 
       const data = await this.odoo.call('res.partner', 'search_read', [
         domain,
         fields,
         offset,
-        perPage,
+        odooLimit,
         order,
       ]);
 
-      // --- LOGIKA BARU UNTUK MENGAMBIL DETAIL KONTAK ---
+      // Ambil anak kontak pertama
       const partnerIdsWithChildren = data
-        .filter((partner) => partner.child_ids && partner.child_ids.length > 0)
-        .map((partner) => partner.child_ids[0]); // Ambil ID kontak pertama saja
+        .filter((p) => p.child_ids && p.child_ids.length > 0)
+        .map((p) => p.child_ids[0]);
 
       let firstContactDetails = {};
       if (partnerIdsWithChildren.length > 0) {
-        const contactFields = ['id', 'name', 'phone', 'email'];
         const contacts = await this.odoo.call('res.partner', 'read', [
           partnerIdsWithChildren,
-          contactFields,
+          ['id', 'name', 'phone', 'email'],
         ]);
 
-        // Buat map dari ID kontak ke detailnya
-        firstContactDetails = contacts.reduce((acc, contact) => {
-          acc[contact.id] = contact;
+        firstContactDetails = contacts.reduce((acc, c) => {
+          acc[c.id] = c;
           return acc;
         }, {});
       }
-      // --- AKHIR LOGIKA BARU ---
 
-      // Tambahkan properti `state` dan detail kontak
-      const formattedData = Array.isArray(data)
-        ? data.map((partner) => {
-            const firstContactId =
-              partner.child_ids && partner.child_ids.length > 0
-                ? partner.child_ids[0]
-                : null;
-            const contactDetail = firstContactId
-              ? firstContactDetails[firstContactId]
-              : null;
+      const formattedData = data.map((partner) => {
+        const firstId = partner.child_ids?.[0];
+        const contact = firstId ? firstContactDetails[firstId] : null;
 
-            return {
-              ...partner,
-              state: partner.state_id
-                ? partner.state_id[1].split('(')[0]
-                : null, // ambil nama state
+        return {
+          ...partner,
+          state: partner.state_id ? partner.state_id[1].split('(')[0] : null,
 
-              // <<< TAMBAHAN FIELD BARU >>>
-              id_contact: contactDetail ? contactDetail.id : null,
-              contact_name: contactDetail ? contactDetail.name : null,
-              contact_phone: contactDetail ? contactDetail.phone : null,
-              contact_email: contactDetail ? contactDetail.email : null,
-              // <<< AKHIR TAMBAHAN FIELD BARU >>>
-            };
-          })
-        : [];
+          id_contact: contact?.id || null,
+          contact_name: contact?.name || null,
+          contact_phone: contact?.phone || null,
+          contact_email: contact?.email || null,
+        };
+      });
 
       const from = total === 0 ? 0 : offset + 1;
-      const to = offset + (Array.isArray(data) ? data.length : 0);
+      const to = offset + formattedData.length;
 
       return {
         success: true,

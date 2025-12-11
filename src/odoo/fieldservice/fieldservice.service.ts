@@ -10,26 +10,28 @@ export class FieldServiceService {
   // 🔹 List data
   async list(page = 1, limit = 20, filters?: any) {
     try {
-      const offset = (page - 1) * limit;
+      const usePagination = page > 0;
+      const offset = usePagination ? (page - 1) * limit : 0;
 
       const domaincheckout: any[] = [['x_studio_end_time', '=', false]];
-
       const domain: any[] = [];
 
       if (filters?.se_id) {
         domain.push(['x_studio_sales_executive', '=', filters.se_id]);
         domaincheckout.push(['x_studio_sales_executive', '=', filters.se_id]);
       }
+
       const totalcheckout = await this.odoo.call(
         'project.task',
         'search_count',
         [domaincheckout],
       );
+
       if (filters?.status_id) domain.push(['stage_id', '=', filters.status_id]);
       if (filters?.customer_id)
         domain.push(['partner_id', '=', filters.customer_id]);
 
-      if (filters.month && filters.year) {
+      if (filters?.month && filters?.year) {
         const { year, month } = filters;
         const lastDay = new Date(year, month, 0).getDate();
         const pad = (n: number) => String(n).padStart(2, '0');
@@ -40,57 +42,61 @@ export class FieldServiceService {
         domain.push(['x_studio_activity_date', '<=', end]);
       }
 
+      const fields = [
+        'id',
+        'name',
+        'partner_id',
+        'stage_id',
+        'description',
+        'planned_date_begin',
+        'partner_name',
+        'partner_phone',
+        'partner_company_name',
+        'partner_city',
+        'partner_zip',
+        'partner_street',
+        'partner_street2',
+        'partner_country_id',
+        'project_id',
+        'x_studio_sales_executive',
+        'x_studio_lat',
+        'x_studio_lang',
+        'x_studio_luas_lahan_ha',
+        'x_studio_attendant',
+        'x_studio_start_time',
+        'x_studio_activity_date',
+        'x_studio_direct_seling',
+        'x_studio_single_demo',
+
+        'x_studio_regency_1',
+        'x_studio_address',
+        'x_studio_district',
+        'x_studio_province',
+        'x_studio_start_time',
+        'x_studio_end_time',
+      ];
+
+      const options: any = {
+        fields,
+        order: 'id desc',
+      };
+
+      if (usePagination) {
+        options.limit = limit;
+        options.offset = offset;
+      }
+
       const tasks = await this.odoo.call(
         'project.task',
         'search_read',
         [domain],
-        {
-          fields: [
-            'id',
-            'name',
-            'partner_id',
-            'stage_id',
-            'description',
-            'planned_date_begin',
-            'partner_name',
-            'partner_phone',
-            'partner_company_name',
-            'partner_city',
-            'partner_zip',
-            'partner_street',
-            'partner_street2',
-            'partner_country_id',
-            'project_id',
-            'x_studio_sales_executive',
-            'x_studio_lat',
-            'x_studio_lang',
-            'x_studio_luas_lahan_ha',
-            'x_studio_attendant',
-            'x_studio_start_time',
-            'x_studio_activity_date',
-            'x_studio_direct_seling',
-            'x_studio_single_demo',
-            'x_studio_image',
-            'x_studio_regency_1',
-            'x_studio_address',
-            'x_studio_district',
-
-            'x_studio_province',
-
-            'x_studio_start_time',
-
-            'x_studio_end_time',
-          ],
-          limit,
-          offset,
-          order: 'id desc',
-        },
+        options,
       );
 
       const total = await this.odoo.call('project.task', 'search_count', [
         domain,
       ]);
-      const totalPages = limit ? Math.ceil(total / limit) : 1;
+      const totalPages = usePagination ? Math.ceil(total / limit) : 1;
 
       return {
         success: true,
@@ -162,7 +168,6 @@ export class FieldServiceService {
           'x_studio_activity_date',
           'x_studio_direct_seling',
           'x_studio_single_demo',
-          'x_studio_image',
         ],
       });
 

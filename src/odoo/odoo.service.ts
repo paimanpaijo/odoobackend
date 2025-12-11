@@ -21,15 +21,12 @@ export class OdooService {
   }
 
   /**
-   * 🔑 Autentikasi ke Odoo
+   * 🔑 Authenticate to Odoo
    */
   private async authenticate(): Promise<number> {
     const now = Date.now();
 
-    // pakai cache (biar tidak login tiap request)
-    if (this.uid && now < this.uidExpiresAt) {
-      return this.uid;
-    }
+    if (this.uid && now < this.uidExpiresAt) return this.uid;
 
     const body = {
       jsonrpc: '2.0',
@@ -42,9 +39,7 @@ export class OdooService {
       id: now,
     };
 
-    const { data } = await axios.post(this.url, body, {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const { data } = await axios.post(this.url, body);
 
     if (!data.result) {
       throw new Error(
@@ -53,16 +48,14 @@ export class OdooService {
     }
 
     this.uid = data.result;
-    this.uidExpiresAt = now + 1000 * 60 * 60; // cache 1 jam
+    this.uidExpiresAt = now + 1000 * 60 * 60; // 1 hour cache
+
     this.logger.log(`Authenticated to Odoo uid=${this.uid}`);
     return this.uid!;
-    /*
-    return 1;
-    */
   }
 
   /**
-   * 🔧 General RPC Call ke Odoo
+   * 🚀 General JSON-RPC call to Odoo
    */
   async call(
     model: string,
@@ -83,14 +76,27 @@ export class OdooService {
       id: Date.now(),
     };
 
-    const { data } = await axios.post(this.url, body, {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const { data } = await axios.post(this.url, body);
 
     if (data.error) {
       throw new Error(JSON.stringify(data.error));
     }
 
     return data.result;
+  }
+
+  /**
+   * 🔍 search_read wrapper
+   */
+  async searchRead(
+    model: string,
+    domain: any[] = [],
+    fields: string[] = [],
+    limit: number = 0,
+  ) {
+    return this.call(model, 'search_read', [domain], {
+      fields,
+      limit: limit > 0 ? limit : undefined,
+    });
   }
 }

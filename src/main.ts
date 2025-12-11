@@ -4,6 +4,7 @@ import { AppModule } from './app.module';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as bodyParser from 'body-parser'; // ✅ tambahkan ini
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -15,6 +16,11 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({ origin: FRONTEND_ORIGIN });
+
+  // ✅ Naikkan batas ukuran JSON dan form body
+  // Ganti '5mb' dengan '500kb' kalau mau lebih ketat
+  app.use(bodyParser.json({ limit: '5mb' }));
+  app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 
   // Validasi global
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

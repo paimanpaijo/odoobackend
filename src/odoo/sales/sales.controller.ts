@@ -79,4 +79,27 @@ export class SalesController {
     const m = month ? parseInt(month) : undefined;
     return this.sales.getSalesSummarySales(y, m, sales_exec);
   }
+
+  @Get('invoicesumary')
+  async getInvoiceSummarySales(@Query('sales_exec') sales_exec?: number) {
+    return this.sales.getInvoiceSummarySales(sales_exec);
+  }
+
+  @Get('invoicelist')
+  async getInvoice(
+    @Query('year') year: string,
+    @Query('month') month?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sales_exec') sales_exec?: string,
+    @Query('state') state?: string,
+  ) {
+    const y = parseInt(year);
+    const m = month ? parseInt(month) : undefined;
+    const p = page ? parseInt(page) : 1;
+    const l = limit ? parseInt(limit) : 10;
+    const se = sales_exec ? parseInt(sales_exec) : undefined;
+
+    return this.sales.getInvoicesByMonth(y, m, p, l, se, state);
+  }
 }
