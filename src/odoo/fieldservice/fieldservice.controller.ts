@@ -14,6 +14,7 @@ export class FieldServiceController {
     @Query('customer_id') customer_id?: string,
     @Query('year') year?: string,
     @Query('month') month?: string,
+    @Query('project_name') project_name?: string,
   ) {
     return this.fs.list(Number(page), Number(limit), {
       se_id,
@@ -21,6 +22,7 @@ export class FieldServiceController {
       customer_id,
       year,
       month,
+      project_name,
     });
   }
 
@@ -63,5 +65,13 @@ export class FieldServiceController {
   @Get('/demo/list')
   async listdemo(@Query('fieldservice_id') fieldservice_id?: number) {
     return this.fs.listdemo(fieldservice_id);
+  }
+
+  @Post('/demo/maintenance/save')
+  async maintenanceDemo(@Body() body: any) {
+    return this.fs.maintenanceDemo(body);
+  }
+  async harvestDemo(body: any) {
+    return this.fs.harvestDemo(body);
   }
 }

@@ -6,42 +6,16 @@ export class FieldServiceService {
   private readonly logger = new Logger(FieldServiceService.name);
 
   constructor(private readonly odoo: OdooService) {}
-
-  // 🔹 List data
   async list(page = 1, limit = 20, filters?: any) {
     try {
+      console.log('FILTERS MASUK:', filters);
+
       const usePagination = page > 0;
       const offset = usePagination ? (page - 1) * limit : 0;
 
-      const domaincheckout: any[] = [['x_studio_end_time', '=', false]];
-      const domain: any[] = [];
-
-      if (filters?.se_id) {
-        domain.push(['x_studio_sales_executive', '=', filters.se_id]);
-        domaincheckout.push(['x_studio_sales_executive', '=', filters.se_id]);
-      }
-
-      const totalcheckout = await this.odoo.call(
-        'project.task',
-        'search_count',
-        [domaincheckout],
-      );
-
-      if (filters?.status_id) domain.push(['stage_id', '=', filters.status_id]);
-      if (filters?.customer_id)
-        domain.push(['partner_id', '=', filters.customer_id]);
-
-      if (filters?.month && filters?.year) {
-        const { year, month } = filters;
-        const lastDay = new Date(year, month, 0).getDate();
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const start = `${year}-${pad(month)}-01 00:00:00`;
-        const end = `${year}-${pad(month)}-${pad(lastDay)} 23:59:59`;
-
-        domain.push(['x_studio_activity_date', '>=', start]);
-        domain.push(['x_studio_activity_date', '<=', end]);
-      }
-
+      // =============================
+      // FIELDS (dipakai dua jalur)
+      // =============================
       const fields = [
         'id',
         'name',
@@ -67,42 +41,164 @@ export class FieldServiceService {
         'x_studio_activity_date',
         'x_studio_direct_seling',
         'x_studio_single_demo',
-
         'x_studio_regency_1',
         'x_studio_address',
         'x_studio_district',
         'x_studio_province',
-        'x_studio_start_time',
         'x_studio_end_time',
       ];
 
-      const options: any = {
-        fields,
-        order: 'id desc',
-      };
+      // =====================================================
+      // 🔥 JALUR KHUSUS: FILTER PROJECT DEMO
+      // =====================================================
+      if (filters?.project_name) {
+        // 1️⃣ Ambil project yang mengandung "demo"
+        const demoProjectIds = await this.odoo.call(
+          'project.project',
+          'search',
+          [[['name', 'ilike', 'demo']]],
+        );
 
-      if (usePagination) {
-        options.limit = limit;
-        options.offset = offset;
+        console.log('DEMO PROJECT IDS:', demoProjectIds);
+
+        // 2️⃣ Kalau tidak ada project demo → kosong
+        if (!demoProjectIds.length) {
+          return {
+            success: true,
+            status: 200,
+            data: [],
+            count_page: 0,
+            count_data: 0,
+            count_notcheckout: 0,
+          };
+        }
+
+        // 3️⃣ DOMAIN BERSIH (TANPA WARISAN APA PUN)
+        const demoDomain: any[] = [['project_id', 'in', demoProjectIds]];
+
+        if (filters?.se_id) {
+          demoDomain.push(['x_studio_sales_executive', '=', filters.se_id]);
+        }
+
+        if (filters?.status_id) {
+          demoDomain.push(['stage_id', '=', filters.status_id]);
+        }
+
+        if (filters?.customer_id) {
+          demoDomain.push(['partner_id', '=', filters.customer_id]);
+        }
+
+        if (filters?.month && filters?.year) {
+          const { year, month } = filters;
+          const lastDay = new Date(year, month, 0).getDate();
+          const pad = (n: number) => String(n).padStart(2, '0');
+
+          demoDomain.push(
+            [
+              'x_studio_activity_date',
+              '>=',
+              `${year}-${pad(month)}-01 00:00:00`,
+            ],
+            [
+              'x_studio_activity_date',
+              '<=',
+              `${year}-${pad(month)}-${pad(lastDay)} 23:59:59`,
+            ],
+          );
+        }
+
+        console.log('DEMO DOMAIN FINAL:', JSON.stringify(demoDomain, null, 2));
+
+        // 4️⃣ QUERY TASK DEMO
+        const tasks = await this.odoo.call(
+          'project.task',
+          'search_read',
+          [demoDomain],
+          {
+            fields,
+            order: 'id desc',
+            limit,
+            offset,
+          },
+        );
+
+        const total = await this.odoo.call('project.task', 'search_count', [
+          demoDomain,
+        ]);
+
+        return {
+          success: true,
+          status: 200,
+          data: tasks,
+          count_page: Math.ceil(total / limit),
+          count_data: total,
+          count_notcheckout: total,
+        };
       }
+
+      // =====================================================
+      // 🟢 JALUR NORMAL (TANPA FILTER DEMO)
+      // =====================================================
+      const domain: any[] = [];
+      const domaincheckout: any[] = [['x_studio_end_time', '=', false]];
+
+      if (filters?.se_id) {
+        domain.push(['x_studio_sales_executive', '=', filters.se_id]);
+        domaincheckout.push(['x_studio_sales_executive', '=', filters.se_id]);
+      }
+
+      if (filters?.status_id) {
+        domain.push(['stage_id', '=', filters.status_id]);
+      }
+
+      if (filters?.customer_id) {
+        domain.push(['partner_id', '=', filters.customer_id]);
+      }
+
+      if (filters?.month && filters?.year) {
+        const { year, month } = filters;
+        const lastDay = new Date(year, month, 0).getDate();
+        const pad = (n: number) => String(n).padStart(2, '0');
+
+        domain.push(
+          ['x_studio_activity_date', '>=', `${year}-${pad(month)}-01 00:00:00`],
+          [
+            'x_studio_activity_date',
+            '<=',
+            `${year}-${pad(month)}-${pad(lastDay)} 23:59:59`,
+          ],
+        );
+      }
+
+      console.log('NORMAL DOMAIN:', JSON.stringify(domain, null, 2));
+
+      const totalcheckout = await this.odoo.call(
+        'project.task',
+        'search_count',
+        [domaincheckout],
+      );
 
       const tasks = await this.odoo.call(
         'project.task',
         'search_read',
         [domain],
-        options,
+        {
+          fields,
+          order: 'id desc',
+          limit,
+          offset,
+        },
       );
 
       const total = await this.odoo.call('project.task', 'search_count', [
         domain,
       ]);
-      const totalPages = usePagination ? Math.ceil(total / limit) : 1;
 
       return {
         success: true,
         status: 200,
         data: tasks,
-        count_page: totalPages,
+        count_page: Math.ceil(total / limit),
         count_data: total,
         count_notcheckout: totalcheckout,
       };
@@ -115,6 +211,8 @@ export class FieldServiceService {
       };
     }
   }
+
+  // 🔹 List data
 
   // 🔹 Detail task
   async getold(id: number) {
@@ -467,6 +565,9 @@ export class FieldServiceService {
             'x_studio_product',
             'x_studio_ubinan',
             'x_studio_rendemen',
+            'x_studio_quantity',
+            'x_studio_maintenance_date',
+            'x_studio_harvest_date',
           ],
 
           order: 'id desc',
@@ -699,8 +800,14 @@ export class FieldServiceService {
   }
   async update(payload: any) {
     try {
-      const { id, direct_selling_items, demo, timesheet_entries, ...data } =
-        payload;
+      const {
+        id,
+        direct_selling_items,
+        demo,
+        timesheet_entries,
+        stock,
+        ...data
+      } = payload;
       if (!id) throw new Error('Missing task ID');
 
       // 🔹 Handle direct selling items
@@ -729,7 +836,25 @@ export class FieldServiceService {
               x_studio_product: item.x_studio_product,
               x_studio_ubinan: item.x_studio_ubinan,
               x_studio_rendemen: item.x_studio_rendemen,
+              x_studio_plant_date: item.x_studio_plant_date,
               x_name: item.product_name || 'No Description',
+            },
+          ]),
+        ];
+      }
+
+      if (Array.isArray(stock)) {
+        data.x_studio_stocktoko = [
+          [5, 0, 0],
+          ...stock.map((item) => [
+            0,
+            0,
+            {
+              x_studio_product: item.x_studio_product,
+              x_studio_stock: item.x_studio_stock,
+              x_studio_sale: item.x_studio_sale,
+              x_studio_date_1: data.x_studio_end_time,
+              x_studio_customer: item.x_studio_customer,
             },
           ]),
         ];
@@ -776,6 +901,80 @@ export class FieldServiceService {
     } catch (error) {
       this.logger.error(`❌ Error: ${error.message}`);
       return { success: false, status: 500, message: error.message };
+    }
+  }
+  async maintenanceDemo(payload: any) {
+    try {
+      const { demo } = payload;
+
+      if (!Array.isArray(demo)) {
+        throw new Error('Demo must be an array');
+      }
+
+      for (const item of demo) {
+        if (!item.id) continue;
+
+        await this.odoo.call(
+          'x_studio_single_demo', // model
+          'write', // method
+          [
+            [item.id],
+            {
+              x_studio_maintenance_date: item.x_studio_maintenance_date,
+            },
+          ],
+        );
+      }
+
+      return {
+        success: true,
+        message: 'Maintenance date updated successfully',
+      };
+    } catch (error) {
+      this.logger.error(`❌ Error: ${error.message}`);
+      return {
+        success: false,
+        status: 500,
+        message: error.message,
+      };
+    }
+  }
+  async harvestDemo(payload: any) {
+    try {
+      const { demo } = payload;
+
+      if (!Array.isArray(demo)) {
+        throw new Error('Demo must be an array');
+      }
+
+      for (const item of demo) {
+        if (!item.id) continue;
+
+        await this.odoo.call(
+          'x_studio_single_demo', // model
+          'write', // method
+          [
+            [item.id],
+            {
+              x_studio_harvest_date: item.x_studio_harvest_date,
+              x_studio_ubinan: item.x_studio_ubinan,
+              x_studio_rendemen: item.x_studio_rendemen,
+            },
+          ],
+        );
+      }
+
+      return {
+        success: true,
+        message: 'Maintenance date updated successfully',
+      };
+    } catch (error) {
+      this.logger.error(`❌ Error: ${error.message}`);
+      return {
+        success: false,
+        status: 500,
+        message: error.message,
+      };
     }
   }
 }

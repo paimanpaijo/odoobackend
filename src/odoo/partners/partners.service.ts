@@ -5,12 +5,31 @@ import { OdooService } from '../odoo.service';
 export class PartnersService {
   private readonly logger = new Logger(PartnersService.name);
   constructor(private readonly odoo: OdooService) {}
-  async findAll(cust_only = 0, employeeId = 0, page = 1, limit = 20, search) {
+  async findAll(
+    cust_only = 0,
+    type,
+    employeeId = 0,
+    page = 1,
+    limit = 20,
+    search,
+  ) {
     try {
       const domain: any[] = [];
 
       if (cust_only === 1) {
         domain.push(['is_company', '=', true]);
+      }
+      if (type) {
+        const types = type
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+        if (types.length === 1) {
+          domain.push(['x_studio_type', '=', types[0]]);
+        } else if (types.length > 1) {
+          domain.push(['x_studio_type', 'in', types]);
+        }
       }
 
       if (employeeId !== 0) {
