@@ -215,33 +215,7 @@ export class FieldServiceService {
   // 🔹 List data
 
   // 🔹 Detail task
-  async getold(id: number) {
-    try {
-      const [task] = await this.odoo.call('project.task', 'read', [[id]], {
-        fields: [
-          'id',
-          'name',
-          'partner_id',
-          'stage_id',
-          'description',
-          'planned_date_begin',
-          'planned_date_end',
-          'project_id',
-          'x_studio_sales_executive',
-          'x_studio_lang',
-          'x_studio_luas_lahan_ha',
-          'x_studio_attendant',
-          'x_studio_start_time',
-          'x_studio_activity_date',
-          'x_studio_direct_seling',
-        ],
-      });
-      return { success: true, status: 200, data: task };
-    } catch (error) {
-      this.logger.error(`❌ Error: ${error.message}`);
-      return { success: false, status: 500, message: error.message };
-    }
-  }
+
   async get(id: number) {
     try {
       // =========================
@@ -266,6 +240,7 @@ export class FieldServiceService {
           'x_studio_activity_date',
           'x_studio_direct_seling',
           'x_studio_single_demo',
+          'x_studio_stocktoko',
         ],
       });
 
@@ -276,6 +251,7 @@ export class FieldServiceService {
       // =========================
       const directIds: number[] = task.x_studio_direct_seling || [];
       const demoIds: number[] = task.x_studio_single_demo || [];
+      const stocktokoIds: number[] = task.x_studio_stocktoko || [];
 
       // =========================
       // 3️⃣ Deklarasi tipe aman
@@ -293,18 +269,32 @@ export class FieldServiceService {
         product_name: string;
         ubinan: number;
         rendemen: number;
+        plant_date: Date;
+        harvest_date: Date;
+        maintenance_date: Date;
         description: string;
+      }
+      interface stocktoko {
+        id: number;
+        product_id: number | null;
+        product_name: string;
+        stock: number;
+        sale: number;
+        customer_id: number | null;
+        customer_name: string;
+        date: Date;
       }
 
       let directSelling: DirectSellingItem[] = [];
       let demoData: DemoItem[] = [];
+      let stockTokoData: stocktoko[] = [];
 
       // =========================
       // 4️⃣ Ambil data Direct Selling
       // =========================
       if (directIds.length > 0) {
         const rawDirect: any[] = await this.odoo.call(
-          'x_directselingitem',
+          'x_directseling',
           'read',
           [directIds],
           {
@@ -336,6 +326,9 @@ export class FieldServiceService {
               'x_studio_product',
               'x_studio_ubinan',
               'x_studio_rendemen',
+              'x_studio_plant_date',
+              'x_studio_harvest_date',
+              'x_studio_maintenance_date',
               'x_name',
             ],
           },
@@ -348,7 +341,41 @@ export class FieldServiceService {
             product_name: d.x_studio_product?.[1] || '',
             ubinan: d.x_studio_ubinan,
             rendemen: d.x_studio_rendemen,
+            plant_date: d.x_studio_plant_date,
+            harvest_date: d.x_studio_harvest_date,
+            maintenance_date: d.x_studio_maintenance_date,
             description: d.x_name,
+          }),
+        );
+      }
+
+      if (stocktokoIds.length > 0) {
+        const rawstocktoko: any[] = await this.odoo.call(
+          'x_stocktoko',
+          'read',
+          [stocktokoIds],
+          {
+            fields: [
+              'id',
+              'x_studio_product',
+              'x_studio_stock',
+              'x_studio_sale',
+              'x_studio_customer',
+              'x_studio_date_1',
+            ],
+          },
+        );
+
+        stockTokoData = rawstocktoko.map(
+          (d: any): stocktoko => ({
+            id: d.id,
+            product_id: d.x_studio_product?.[0] || null,
+            product_name: d.x_studio_product?.[1] || '',
+            stock: d.x_studio_stock,
+            sale: d.x_studio_sale,
+            customer_id: d.x_studio_customer?.[0] || null,
+            customer_name: d.x_studio_customer?.[1] || '',
+            date: d.x_studio_date_1,
           }),
         );
       }
@@ -360,6 +387,7 @@ export class FieldServiceService {
         ...task,
         direct_selling: directSelling,
         demo: demoData,
+        stock: stockTokoData,
       };
 
       // =========================
@@ -415,19 +443,6 @@ export class FieldServiceService {
   }
 
   // 🔹 Update Field Service
-  async updateold(payload: any) {
-    try {
-      await this.odoo.call('project.task', 'write', [[payload.id], payload]);
-      return {
-        success: true,
-        status: 200,
-        message: 'Field Service updated',
-      };
-    } catch (error) {
-      this.logger.error(`❌ Error: ${error.message}`);
-      return { success: false, status: 500, message: error.message };
-    }
-  }
 
   async getProjects(limit = 50, search?: string) {
     const domain: any[] = [
@@ -975,6 +990,162 @@ export class FieldServiceService {
         status: 500,
         message: error.message,
       };
+    }
+  }
+
+  // Di dalam class service Anda
+  async listDemoBySales(
+    salesId: number,
+    page: number = 1,
+    limit: number = 10,
+    filters?: any,
+  ) {
+    interface OdooTask {
+      id: number;
+      display_name: string;
+      partner_id: [number, string] | false;
+    }
+
+    try {
+      const domain: any[] = [['x_studio_sales_executive', '=', salesId]];
+      if (filters?.month && filters?.year) {
+        const { year, month } = filters;
+        const lastDay = new Date(year, month, 0).getDate();
+        const pad = (n: number) => String(n).padStart(2, '0');
+
+        domain.push(
+          ['x_studio_activity_date', '>=', `${year}-${pad(month)}-01 00:00:00`],
+          [
+            'x_studio_activity_date',
+            '<=',
+            `${year}-${pad(month)}-${pad(lastDay)} 23:59:59`,
+          ],
+        );
+      }
+      const offset = (page - 1) * limit;
+      const relationField = 'x_studio_field_service'; // Field yang Anda konfirmasi
+
+      // 1️⃣ Cari semua ID Task yang sales executive-nya adalah salesId
+      const taskIds: number[] = await this.odoo.call('project.task', 'search', [
+        domain,
+      ]);
+
+      // Jika tidak ada task, langsung return array kosong
+      if (!taskIds || taskIds.length === 0) {
+        return {
+          success: true,
+          status: 200,
+          pagination: {
+            total_items: 0,
+            current_page: Number(page),
+            limit: Number(limit),
+            total_pages: 0,
+          },
+          data: [],
+        };
+      }
+
+      // 2️⃣ Hitung total records x_singledemo yang terhubung dengan taskIds
+      const totalRecords = await this.odoo.call(
+        'x_singledemo',
+        'search_count',
+        [[[relationField, 'in', taskIds]]],
+      );
+
+      // 3️⃣ Ambil data x_singledemo dengan paging
+      const rawDemos: any[] = await this.odoo.call(
+        'x_singledemo',
+        'search_read',
+        [],
+        {
+          domain: [[relationField, 'in', taskIds]],
+          fields: [
+            'id',
+            relationField,
+            'x_studio_product',
+            'x_studio_ubinan',
+            'x_studio_rendemen',
+            'x_studio_plant_date',
+            'x_studio_harvest_date',
+            'x_studio_maintenance_date',
+          ],
+          limit: limit,
+          offset: offset,
+          order: 'id desc',
+        },
+      );
+
+      // 4️⃣ Ambil detail Task (hanya untuk task yang muncul di halaman ini agar lebih efisien)
+      const currentTaskIds = [
+        ...new Set(
+          rawDemos.map((d) => d[relationField]?.[0]).filter((id) => !!id),
+        ),
+      ];
+
+      let taskMap = new Map<number, OdooTask>();
+      if (currentTaskIds.length > 0) {
+        const tasks: OdooTask[] = await this.odoo.call(
+          'project.task',
+          'read',
+          [currentTaskIds],
+          {
+            fields: [
+              'id',
+              'display_name',
+              'partner_id',
+              'x_studio_address',
+              'x_studio_lat',
+              'x_studio_lang',
+              'x_studio_activity_date',
+            ],
+          },
+        );
+        tasks.forEach((t) => taskMap.set(t.id, t));
+      }
+
+      // 5️⃣ Mapping hasil akhir
+      const listData = rawDemos.map((d) => {
+        const taskId = d[relationField]?.[0];
+        const taskDetail = taskId ? taskMap.get(taskId) : undefined;
+
+        return {
+          id: d.id,
+          task_id: taskId || null,
+          task_name: taskDetail?.display_name || d[relationField]?.[1] || '',
+          customer_name: Array.isArray(taskDetail?.partner_id)
+            ? taskDetail?.partner_id[1]
+            : 'No Customer',
+          address: taskDetail ? (taskDetail as any).x_studio_address : '',
+          lat: taskDetail ? (taskDetail as any).x_studio_lat : '',
+          lang: taskDetail ? (taskDetail as any).x_studio_lang : '',
+          activity_date: taskDetail
+            ? (taskDetail as any).x_studio_activity_date
+            : null,
+          product_id: d.x_studio_product?.[0] || null,
+          product_name: d.x_studio_product?.[1] || '',
+          ubinan: d.x_studio_ubinan || 0,
+          rendemen: d.x_studio_rendemen || 0,
+          plant_date: d.x_studio_plant_date,
+          harvest_date: d.x_studio_harvest_date,
+          maintenance_date: d.x_studio_maintenance_date,
+        };
+      });
+
+      // 6️⃣ Return hasil
+      return {
+        success: true,
+        status: 200,
+        pagination: {
+          total_items: totalRecords,
+          current_page: Number(page),
+          limit: Number(limit),
+          total_pages: Math.ceil(totalRecords / limit),
+        },
+        data: listData,
+      };
+    } catch (error: any) {
+      this.logger.error(`❌ Error in listDemoBySales: ${error.message}`);
+      throw error;
     }
   }
 }

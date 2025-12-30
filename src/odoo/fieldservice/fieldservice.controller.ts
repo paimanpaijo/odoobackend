@@ -74,4 +74,24 @@ export class FieldServiceController {
   async harvestDemo(body: any) {
     return this.fs.harvestDemo(body);
   }
+  @Get('/demo/list/sales/:sales_id')
+  async getDemoList(
+    @Param('sales_id') salesId: string,
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('search') search?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    // Konversi parameter ke number
+    const sId = parseInt(salesId);
+    const p = parseInt(page) || 1;
+    const l = parseInt(limit) || 10;
+    console.log('Fetching demo list for sales ID:');
+    return this.fs.listDemoBySales(sId, p, l, {
+      search,
+      month,
+      year,
+    });
+  }
 }
