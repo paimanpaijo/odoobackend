@@ -71,7 +71,8 @@ export class FieldServiceController {
   async maintenanceDemo(@Body() body: any) {
     return this.fs.maintenanceDemo(body);
   }
-  async harvestDemo(body: any) {
+  @Post('/demo/harvest/save')
+  async harvestDemo(@Body() body: any) {
     return this.fs.harvestDemo(body);
   }
   @Get('/demo/list/sales/:sales_id')

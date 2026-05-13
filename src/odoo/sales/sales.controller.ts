@@ -39,15 +39,58 @@ export class SalesController {
       x_studio_retailer_discount: body.x_studio_retailer_discount,
       x_studio_farmer_discount: body.x_studio_farmer_discount,
       items: body.items,
+      customer_email: body.customer_email,
+      customer_name: body.customer_name,
+      customer_phone: body.customer_phone,
+      validate_status: body.validate_status,
+      validator_id: body.validator_id,
+      validator_phone: body.validator_phone,
+      validator_email: body.validator_email,
+      approver_id: body.approver_id,
+      approver_phone: body.approver_phone,
+      approver_email: body.approver_email,
+      approver_nsm_id: body.approver_nsm_id,
+      approver_nsm_phone: body.approver_nsm_phone,
+      approver_nsm_email: body.approver_nsm_email,
+      validate_status2: body.validate_status2,
+      orderCategory: body.orderCategory,
+      keyword: body.keyword,
+      otp: body.otp,
     };
 
     return this.sales.createSalesOrder(payload);
   }
 
+  @Post('confirmorder')
+  async confirmOrder(@Body() body: any) {
+    const payload = {
+      id: body.id,
+      keyword: body.keyword,
+      otp: body.otp,
+    };
+    return this.sales.confirmOrder(payload);
+  }
+
+  @Post('approval/saleorder')
+  async approvalSaleorder(@Body() body: any) {
+    const payload = {
+      order_id: Number(body.order_id),
+      status: body.status,
+      dealer: body.dealer ?? body.dealer_id ?? false,
+      note: body.note ?? '',
+    };
+
+    return this.sales.approvalSaleOrder(payload);
+  }
   // await this.updateSalesOrder(15, { state: 'approved_manager' });
   @Put(':id')
   async updateSO(@Param('id') id: number, @Body() body: any) {
     return this.sales.updateSalesOrder(id, body);
+  }
+
+  @Get('salesdata')
+  async getSalesData(@Query('id') id: string) {
+    return this.sales.getSalesData(Number(id));
   }
 
   @Get('summary')
@@ -69,6 +112,23 @@ export class SalesController {
     });
   }
 
+  @Get('listvalidation')
+  async getValidationOrder(
+    @Query('approver_id') approver_id: string,
+    @Query('status') status: string,
+    @Query('limit') limit: string = '10',
+    @Query('page') page: string = '1',
+    @Query('search') search?: string,
+  ) {
+    return this.sales.getValidationOrder(
+      Number(approver_id),
+      status,
+      Number(limit),
+      Number(page),
+      search,
+    );
+  }
+
   @Get('summarysales')
   async getSummary(
     @Query('year') year: string,
@@ -80,6 +140,10 @@ export class SalesController {
     return this.sales.getSalesSummarySales(y, m, sales_exec);
   }
 
+  @Get('salesdetails')
+  async getSaleDetails(@Query('id') id: string) {
+    return this.sales.getItemSalesOrder(Number(id));
+  }
   @Get('invoicesumary')
   async getInvoiceSummarySales(@Query('sales_exec') sales_exec?: number) {
     return this.sales.getInvoiceSummarySales(sales_exec);
@@ -101,5 +165,10 @@ export class SalesController {
     const se = sales_exec ? parseInt(sales_exec) : undefined;
 
     return this.sales.getInvoicesByMonth(y, m, p, l, se, state);
+  }
+
+  @Get('sts')
+  async getSts(@Query('id') id: number) {
+    return this.sales.getSts(id);
   }
 }

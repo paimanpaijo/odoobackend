@@ -46,7 +46,7 @@ export class PricelistService {
   }
 
   async getPriceListItems(pricelistId: number, pid: number) {
-    const today = new Date().toISOString().split('T')[0]; // ambil YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
 
     return this.odoo.call(
       'product.pricelist.item',
@@ -54,18 +54,23 @@ export class PricelistService {
       [
         [
           ['pricelist_id', '=', pricelistId],
+          ['product_tmpl_id', '=', pid], // <--- agar spesifik ke produk
+          '|',
           ['date_start', '<=', today],
+          ['date_start', '=', false],
+          // Logika: (date_end >= today OR date_end = false)
+          '|',
           ['date_end', '>=', today],
+          ['date_end', '=', false],
         ],
-      ], // filter
+      ],
       {
         fields: [
           'id',
           'display_name',
           'date_start',
           'date_end',
-          'price',
-          'fixed_price',
+          'fixed_price', // Di Odoo biasanya 'fixed_price', bukan 'price'
           'product_tmpl_id',
         ],
       },

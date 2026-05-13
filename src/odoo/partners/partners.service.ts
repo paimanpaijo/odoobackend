@@ -12,6 +12,7 @@ export class PartnersService {
     page = 1,
     limit = 20,
     search,
+    excepttype,
   ) {
     try {
       const domain: any[] = [];
@@ -30,6 +31,9 @@ export class PartnersService {
         } else if (types.length > 1) {
           domain.push(['x_studio_type', 'in', types]);
         }
+      }
+      if (excepttype) {
+        domain.push(['x_studio_type', '!=', excepttype]);
       }
 
       if (employeeId !== 0) {
@@ -74,7 +78,19 @@ export class PartnersService {
       ];
 
       const order = 'id desc';
+      let custdemoId = 0;
+      if (employeeId !== 0) {
+        const custdemo = await this.odoo.call('res.partner', 'search_read', [
+          [
+            ['x_studio_type', '=', 'Demo'],
+            ['x_studio_sales_executive', '=', employeeId],
+          ],
+        ]);
 
+        if (custdemo.length > 0) {
+          custdemoId = 1;
+        }
+      }
       // Hitung total
       const total = await this.odoo.call('res.partner', 'search_count', [
         domain,
@@ -149,6 +165,8 @@ export class PartnersService {
         from,
         to,
         order,
+        custdemo: custdemoId,
+
         data: formattedData,
       };
     } catch (error) {

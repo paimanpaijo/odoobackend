@@ -13,6 +13,7 @@ export interface SalesSummary {
   state: string;
   state_label: string;
   tanggal_order: string;
+  price_list: string;
 
   // 🔹 Custom field dari res.partner
   agreement: boolean | false;

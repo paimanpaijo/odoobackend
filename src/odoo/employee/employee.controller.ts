@@ -40,4 +40,14 @@ export class EmployeeController {
   async getEmail(@Param('email') email: string) {
     return this.Employee.getEmail(email);
   }
+  @Post('updatedata')
+  async updateData(@Body() body: any) {
+    const payload = {
+      employee_id: Number(body.employee_id),
+      name: body.name,
+      phone: body.phone,
+      image: body.image,
+    };
+    return this.Employee.updateEmployeeDirect(payload);
+  }
 }

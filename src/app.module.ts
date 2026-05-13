@@ -14,6 +14,7 @@ import { FieldServiceModule } from './odoo/fieldservice/fieldservice.module';
 import { UploadModule } from './upload/upload.module';
 import { AuthModule } from './auth/auth.module';
 import { ActivityplanModule } from './odoo/activityplan/activityplan.module';
+import { MailModule } from './odoo/mail/mail.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ActivityplanModule } from './odoo/activityplan/activityplan.module';
     FieldServiceModule,
     UploadModule,
     ActivityplanModule,
+    MailModule,
 
     RouterModule.register([
       {
@@ -45,6 +47,7 @@ import { ActivityplanModule } from './odoo/activityplan/activityplan.module';
           { path: 'fieldservice', module: FieldServiceModule },
           { path: 'upload', module: UploadModule },
           { path: 'activityplan', module: ActivityplanModule },
+          { path: 'mail', module: MailModule },
         ],
       },
     ]),

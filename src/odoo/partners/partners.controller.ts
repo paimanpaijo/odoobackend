@@ -28,12 +28,21 @@ export class PartnersController {
   async findAll(
     @Query('cust_only') cust_only: number = 1,
     @Query('type') type?: string,
+    @Query('excepttype') excepttype?: string,
     @Query('employeeId') employeeId: number = 0,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
     @Query('search') search?: string,
   ) {
-    return this.odoo.findAll(cust_only, type, employeeId, page, limit, search);
+    return this.odoo.findAll(
+      cust_only,
+      type,
+      employeeId,
+      page,
+      limit,
+      search,
+      excepttype,
+    );
   }
 
   // ✅ GET /odoo/partners/:id

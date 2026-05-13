@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OdooService } from '../odoo.service';
 import { SalesSummary } from './sales.types';
-
+import axios from 'axios';
+import { formatOdooDatetime } from 'src/auth/library/utility';
+import * as qs from 'qs';
 @Injectable()
 export class SalesService {
   constructor(private readonly odoo: OdooService) {}
@@ -54,6 +56,47 @@ export class SalesService {
     };
   }
 
+  async getSalesData(id) {
+    const data = await this.odoo.call(
+      'sale.order',
+      'search_read',
+      [[['id', '=', id]]],
+      {
+        fields: [
+          'id',
+          'name',
+          'partner_id',
+          'date_order',
+          'amount_total',
+          'state',
+          'x_studio_sales_executive',
+          'payment_term_id',
+          'x_studio_retailer_discount',
+          'x_studio_farmer_discount',
+          'x_studio_validator',
+          'x_studio_validate_status',
+          'x_studio_validator_date_1',
+          'x_studio_approver_1',
+          'x_studio_approver_date',
+          'x_studio_approval_rsm_status',
+          'x_studio_approver_rsm',
+          'x_studio_approved_date_1',
+
+          'x_studio_keyword',
+          'x_studio_otp',
+          'x_studio_expired',
+          'x_studio_status',
+        ],
+      },
+    );
+    return {
+      status: 200,
+      success: true,
+      count: data.length,
+      data,
+    };
+  }
+
   async createSalesOrder(payload: {
     partner_id: number;
     pricelist_id: number;
@@ -61,6 +104,24 @@ export class SalesService {
     x_studio_sales_executive?: number;
     x_studio_retailer_discount?: number;
     x_studio_farmer_discount?: number;
+    customer_email?: string; // untuk notifikasi (jika diperlukan)
+    customer_name: string;
+    customer_phone: string;
+    validate_status?: boolean;
+    validator_id?: number;
+    validator_phone?: string;
+    validator_email?: string;
+    approver_id?: number;
+    approver_nsm_id?: number;
+    approver_phone?: string;
+    approver_email?: string;
+    approver_nsm_phone?: string;
+    approver_nsm_email?: string;
+    validate_status2?: boolean;
+    keyword?: string;
+    otp?: string;
+    orderCategory?: string;
+
     items: {
       product_id: number;
       quantity: number;
@@ -81,6 +142,7 @@ export class SalesService {
         },
       ]);
 
+      const exp = formatOdooDatetime(new Date(Date.now() + 30 * 60 * 1000));
       // 🧩 data utama sales order
       const salesOrderData: any = {
         partner_id: payload.partner_id,
@@ -90,7 +152,35 @@ export class SalesService {
         x_studio_farmer_discount: payload.x_studio_farmer_discount || false,
         x_studio_retailer_discount: payload.x_studio_retailer_discount || false,
         order_line: orderLines,
-        state: 'draft', // default awal draft
+        x_studio_status_order: payload.orderCategory,
+        state: 'no_confirm', // default awal draft
+        x_studio_validate_status: payload.validate_status || 'unvalidated',
+        x_studio_validator: payload.validator_id || false,
+        x_studio_validator_date_1: payload.validator_id
+          ? formatOdooDatetime(new Date())
+          : false, // default awal new Date() : false,
+        x_studio_approver_1: payload.approver_id || false,
+        x_studio_approver_date: false,
+        x_studio_keyword: payload.keyword,
+        x_studio_otp: payload.otp,
+        x_studio_expired: exp, // OTP expired 30 menit
+        x_studio_status: 'Unconfirm',
+        x_studio_approval_rsm_status: payload.validate_status2
+          ? 'Approved'
+          : 'Pending',
+        x_studio_approver_rsm: payload.approver_nsm_id || false,
+
+        x_studio_approved_date_1: payload.approver_nsm_id
+          ? formatOdooDatetime(new Date())
+          : false,
+        x_studio_approved_date: false,
+        x_studio_approve_status: 'Pending',
+        x_studio_email_dsm: payload.validator_email || false,
+        x_studio_phone_dsm: payload.validator_phone || false,
+        x_studio_email_rsm: payload.approver_nsm_email || false,
+        x_studio_phone_rsm: payload.approver_nsm_phone || false,
+        x_studio_phone_presdir: payload.approver_phone || false,
+        x_studio_email_presdir: payload.approver_email || false,
       };
 
       // 🚀 kirim ke Odoo
@@ -98,8 +188,75 @@ export class SalesService {
         salesOrderData,
       ]);
 
-      this.logger.log(`✅ Sales Order created ID: ${saleOrderId}`);
+      const data = await this.odoo.call(
+        'sale.order',
+        'search_read',
+        [[['id', '=', saleOrderId]]],
+        {
+          fields: [
+            'id',
+            'name', // nomor SO
+            'partner_id', // customer
+            'date_order', // tanggal order
+            'amount_total', // total
+            'state', // status (draft, sale, done, cancel)
+          ],
+        },
+      );
+      const salesDtl = await this.getItemSalesOrder(saleOrderId);
+      if (!salesDtl.success) {
+        this.logger.warn('Failed get sales detail');
+      }
 
+      const qty = salesDtl.summary?.qty || 0;
+      const weight = salesDtl.summary?.weight || 0;
+
+      const dtls = salesDtl.order_lines
+        ?.map(
+          (item) =>
+            `${item.product_name} : ${item.product_uom_qty} pack Total ${item.total_weight} Kg`,
+        )
+        .join(', ');
+      this.logger.log(`✅ Sales Order created ID: ${saleOrderId}`);
+      if (payload.customer_email) {
+        try {
+          await axios.post('https://odoo.shriramgenetics.com/odoo/mail/send', {
+            to: payload.customer_email,
+            subject: `OTP #${saleOrderId}`,
+            html: `
+              <h2>Kode OTP <b>${payload.otp}</b> untuk order ID <b>${data[0].name}</b> total qty <b>${qty} Pack</b> total Volume <b>${weight} Kg</b></h2>
+              <p>Detail Order:</p><p>${dtls}</p>
+              <p>Mohon lakukan konfirmasi Sales Order melalui tautan berikut.</p>
+              <p><a href="https://zurra.shriramgenetics.com/otp/sales?id=${saleOrderId}&keyword=${payload.keyword}">Link Konfirmasi</a></p>
+              <p>Batas waktu konfirmasi OTP adalah <b>${exp}</b></p>
+              <p>Terima kasih atas kerja sama yang baik. Semoga hubungan bisnis ini membawa kesuksesan yang berkelanjutan bagi kita semua.</p>
+            `,
+          });
+        } catch (err) {
+          this.logger.warn(`⚠️ Gagal call mail API: ${err.message}`);
+        }
+      }
+      if (payload.customer_phone) {
+        try {
+          const response = await axios.post(
+            'https://api.fonnte.com/send',
+            // Gunakan qs.stringify atau URLSearchParams agar formatnya sesuai form-data
+            qs.stringify({
+              target: payload.customer_phone,
+              message: `Mohon Lakukan konfirmasi Sales Order #${data[0].name} , total qty ${qty} Pack, total Volume ${weight} Kg detail order ${dtls} ke tautan berikut https://zurra.shriramgenetics.com/otp/sales?id=${saleOrderId}&keyword=${payload.keyword} . Kode OTP untuk order ID ${saleOrderId} adalah ${payload.otp}. Masa berlaku 30 menit.`,
+            }),
+            {
+              headers: {
+                // Hilangkan 'Bearer ', masukkan token langsung
+                Authorization: process.env.TOKEN_WHATSAPP,
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+            },
+          );
+        } catch (err) {
+          this.logger.warn(`⚠️ Gagal call WhatsApp API: ${err.message}`);
+        }
+      }
       return {
         success: true,
         status: 201,
@@ -115,6 +272,177 @@ export class SalesService {
       };
     }
   }
+
+  async confirmOrder(payload: { id: number }) {
+    const { id } = payload;
+    const data = { x_studio_status: 'Confirmed' };
+
+    try {
+      const sts = await this.odoo.call(
+        'sale.order',
+        'search_read',
+        [[['id', '=', id]]],
+        {
+          fields: [
+            'x_studio_validate_status',
+            'x_studio_approval_rsm_status',
+            'x_studio_approve_status',
+            'x_studio_email_dsm',
+            'x_studio_phone_dsm',
+            'x_studio_email_rsm',
+            'x_studio_phone_rsm',
+            'x_studio_phone_presdir',
+            'x_studio_email_presdir',
+            'name',
+            'partner_id',
+          ],
+        },
+      );
+      const resultconfirm = await this.odoo.call(
+        'sale.order',
+        'action_api_confirm_baru',
+        [[Number(id)]],
+      );
+      if (sts[0].x_studio_validate_status.toLowerCase() === 'unvalidated') {
+        const result = await this.odoo.call(
+          'sale.order',
+          'action_confirmed',
+          [[Number(id)]], // tetap, tapi kita pastikan wrapper tidak double wrap
+        );
+        if (sts.x_studio_email_dsm != '' && sts.x_studio_email_dsm) {
+          try {
+            await axios.post(
+              'https://odoo.shriramgenetics.com/odoo/mail/send',
+              {
+                to: sts.x_studio_email_dsm,
+                subject: `Mohon Evaluasi dan Validasi Sales Order #${sts.name}`,
+                html: `
+              <h2>Mohon Evaluasi dan Validasi Sales Order #${sts.name} atas nama <b>${sts.partner_id[1]}</b> </h2>
+              <p>Terima kasih atas kerja sama .</p>
+            `,
+              },
+            );
+          } catch (err) {
+            this.logger.warn(`⚠️ Gagal call mail API: ${err.message}`);
+          }
+        }
+        if (sts.x_studio_phone_dsm != '' && sts.x_studio_phone_dsm) {
+          try {
+            const response = await axios.post(
+              'https://api.fonnte.com/send',
+              // Gunakan qs.stringify atau URLSearchParams agar formatnya sesuai form-data
+              qs.stringify({
+                target: sts.x_studio_phone_dsm,
+                message: `Mohon Lakukan evaluasi dan validasi Sales Order #${sts.name} atas nama ${sts.partner_id[1]}, Terima kasih.`,
+              }),
+              {
+                headers: {
+                  // Hilangkan 'Bearer ', masukkan token langsung
+                  Authorization: process.env.TOKEN_WHATSAPP,
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                },
+              },
+            );
+          } catch (err) {
+            this.logger.warn(`⚠️ Gagal call WhatsApp API: ${err.message}`);
+          }
+        }
+      } else if (
+        sts[0].x_studio_validate_status.toLowerCase() === 'validated' &&
+        sts[0].x_studio_approval_rsm_status.toLowerCase() === 'pending'
+      ) {
+        const result = await this.odoo.call(
+          'sale.order',
+          'action_approve_dsm',
+          [[Number(id)]],
+        ); // tetap, tapi kita pastikan wrapper tidak double wrap
+      } else if (
+        sts[0].x_studio_validate_status.toLowerCase() === 'validated' &&
+        sts[0].x_studio_approval_rsm_status.toLowerCase() === 'approved' &&
+        sts[0].x_studio_approve_status.toLowerCase() === 'pending'
+      ) {
+        const result = await this.odoo.call(
+          'sale.order',
+          'action_approve_manager',
+          [[Number(id)]],
+        );
+        if (sts.x_studio_email_rsm != '' && sts.x_studio_email_rsm) {
+          try {
+            await axios.post(
+              'https://odoo.shriramgenetics.com/odoo/mail/send',
+              {
+                to: sts.x_studio_email_rsm,
+                subject: `Mohon Evaluasi dan Validasi Sales Order #${sts.name}`,
+                html: `
+              <h2>Mohon Evaluasi dan Validasi Sales Order #${sts.name} atas nama <b>${sts.partner_id[1]}</b> </h2>
+              <p>Terima kasih atas kerja sama .</p>
+            `,
+              },
+            );
+          } catch (err) {
+            this.logger.warn(`⚠️ Gagal call mail API: ${err.message}`);
+          }
+        }
+        if (sts.x_studio_phone_rsm != '' && sts.x_studio_phone_rsm) {
+          try {
+            const response = await axios.post(
+              'https://api.fonnte.com/send',
+              // Gunakan qs.stringify atau URLSearchParams agar formatnya sesuai form-data
+              qs.stringify({
+                target: sts.x_studio_phone_rsm,
+                message: `Mohon Lakukan evaluasi dan validasi Sales Order #${sts.name} atas nama ${sts.partner_id[1]}, Terima kasih.`,
+              }),
+              {
+                headers: {
+                  // Hilangkan 'Bearer ', masukkan token langsung
+                  Authorization: process.env.TOKEN_WHATSAPP,
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                },
+              },
+            );
+          } catch (err) {
+            this.logger.warn(`⚠️ Gagal call WhatsApp API: ${err.message}`);
+          }
+        }
+      }
+      return { success: true, message: `Order ${id} updated` };
+    } catch (error) {
+      console.error('ERROR ODOO LAGI:', error);
+      throw error;
+    }
+  }
+
+  async approvalSaleOrder(payload: {
+    order_id: number;
+    status: string;
+    dealer?: number | false;
+    note?: string | false;
+  }) {
+    const args = [
+      payload.order_id,
+      payload.status,
+      payload.dealer ?? false,
+      payload.note ?? false,
+    ];
+
+    console.log('SEND TO ODOO:', args);
+
+    const result = await this.odoo.call(
+      'sale.order',
+      'action_api_approved',
+      args,
+    );
+
+    if (!result) {
+      throw new Error('Odoo failed to update order' + payload.order_id);
+    }
+
+    return {
+      success: true,
+      message: `Order ${payload.order_id} updated`,
+    };
+  }
+
   async updateSalesOrder(orderId: number, data: any) {
     return this.odoo.call('sale.order', 'write', [[orderId], data]);
   }
@@ -159,6 +487,90 @@ export class SalesService {
 
     return stateMap;
   }
+
+  async getValidationOrder(
+    approver_id: number,
+    status: string,
+    limit: number,
+    page: number,
+    search?: string,
+  ) {
+    const offset = (page - 1) * limit;
+    const domain: any[] = [];
+
+    if (status == 'confirmed') {
+      domain.push(['state', '=', 'confirmed']);
+      domain.push(['x_studio_validator', '=', approver_id]);
+    } else if (status == 'approved_dsm') {
+      domain.push(['state', '=', 'approved_dsm']);
+      domain.push(['x_studio_approver_rsm', '=', approver_id]);
+    } else if (status == 'approved_manager') {
+      domain.push(['state', '=', 'approved_manager']);
+      domain.push(['x_studio_approver_1', '=', approver_id]);
+    }
+
+    if (search) {
+      domain.push(['name', 'ilike', `%${search}%`]);
+    }
+    const total_all_data = await this.odoo.call('sale.order', 'search_count', [
+      domain,
+    ]);
+    const list = await this.odoo.call('sale.order', 'search_read', [domain], {
+      fields: [
+        'id',
+        'name',
+        'partner_id',
+        'state',
+        'company_id',
+        'partner_id',
+        'create_date',
+        'commitment_date',
+        'date_order',
+        'note',
+        'payment_term_id',
+        'pricelist_id',
+        'currency_id',
+        'amount_total',
+        'x_studio_sales_executive',
+        'x_studio_retailer_discount',
+        'x_studio_farmer_discount',
+        'x_studio_dealer_transaction',
+        'x_studio_validator',
+        'x_studio_phone_dsm',
+        'x_studio_email_dsm',
+        'x_studio_validate_status',
+        'x_studio_validator_date_1',
+        'x_studio_note_validation',
+        'x_studio_approval_rsm_status',
+        'x_studio_approver_rsm',
+        'x_studio_email_rsm',
+        'x_studio_phone_rsm',
+        'x_studio_approved_date',
+        'x_studio_note_rsm',
+        'x_studio_approver_1',
+        'x_studio_approved_date_1',
+        'x_studio_note_approver',
+        'x_studio_phone_presdir',
+        'x_studio_email_presdir',
+        'x_studio_dealer_processor',
+        'x_studio_expired',
+        'x_studio_status',
+      ],
+      limit,
+      offset,
+      order: 'id desc',
+    });
+    return {
+      status: 200,
+      success: true,
+
+      page,
+      limit,
+      total_all_data,
+      total_page: limit === 0 ? 1 : Math.ceil(total_all_data / (limit || 1)),
+      data: list,
+    };
+  } // (id: number, status)
 
   async getSalesSummary(
     limit = 10,
@@ -229,6 +641,7 @@ export class SalesService {
           'invoice_ids',
           'state',
           'date_order',
+          'pricelist_id',
         ],
         limit,
         offset,
@@ -401,10 +814,10 @@ export class SalesService {
           state_label: stateLabels[so.state] || so.state,
           tanggal_order: so.date_order?.split(' ')[0] || '',
           agreement,
+          price_list: so.pricelist_id?.[1] || '',
           items: linesByOrder[so.id] || [],
         });
       }
-
       return {
         status: 200,
         success: true,
@@ -982,5 +1395,88 @@ export class SalesService {
       console.error('❌ Error getInvoicesByMonth:', error);
       return { success: false, message: 'Failed to get invoice list', error };
     }
+  }
+
+  async getItemSalesOrder(orderId: number) {
+    try {
+      const orderLines = await this.odoo.call(
+        'sale.order.line',
+        'search_read',
+        [[['order_id', '=', orderId]]],
+        {
+          fields: [
+            'id',
+            'product_id',
+            'product_uom_qty',
+            'price_unit',
+            'discount',
+            'product_uom',
+            'price_total',
+          ],
+        },
+      );
+
+      let totalQty = 0;
+      let totalWeight = 0;
+      let totalVolume = 0;
+
+      const enrichedLines = await Promise.all(
+        orderLines.map(async (item) => {
+          const productId = item.product_id?.[0];
+
+          const product = await this.odoo.call(
+            'product.product',
+            'read',
+            [[productId]],
+            {
+              fields: ['weight', 'volume', 'name'],
+            },
+          );
+
+          const prod = product[0];
+
+          const qty = item.product_uom_qty || 0;
+          const weight = (prod.weight || 0) * qty;
+          const volume = (prod.volume || 0) * qty;
+
+          totalQty += qty;
+          totalWeight += weight;
+          totalVolume += volume;
+
+          return {
+            ...item,
+            product_name: prod.name,
+            unit_weight: prod.weight,
+            unit_volume: prod.volume,
+            total_weight: weight,
+            total_volume: volume,
+          };
+        }),
+      );
+
+      return {
+        success: true,
+        order_id: orderId,
+        order_lines: enrichedLines,
+        summary: {
+          qty: totalQty,
+          weight: totalWeight,
+          volume: totalVolume,
+        },
+      };
+    } catch (error) {
+      console.error('❌ Error getItemSalesOrder:', error);
+
+      return {
+        success: false,
+        message: 'Failed to get sales order items',
+        error,
+      };
+    }
+  }
+
+  async getSts(id: number) {
+    const result = await this.odoo.call('sale.order', 'action_cancel', [id]);
+    return result;
   }
 }

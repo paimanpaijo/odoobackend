@@ -1,3 +1,4 @@
+import { identity } from 'rxjs';
 import { Injectable, Logger } from '@nestjs/common';
 import { OdooService } from '../odoo.service';
 
@@ -578,6 +579,7 @@ export class FieldServiceService {
             'id',
             'x_studio_field_service',
             'x_studio_product',
+            'x_studio_seeds',
             'x_studio_ubinan',
             'x_studio_rendemen',
             'x_studio_quantity',
@@ -849,6 +851,7 @@ export class FieldServiceService {
             0,
             {
               x_studio_product: item.x_studio_product,
+              x_studio_seeds: item.x_studio_seeds,
               x_studio_ubinan: item.x_studio_ubinan,
               x_studio_rendemen: item.x_studio_rendemen,
               x_studio_plant_date: item.x_studio_plant_date,
@@ -920,31 +923,43 @@ export class FieldServiceService {
   }
   async maintenanceDemo(payload: any) {
     try {
-      const { demo } = payload;
+      const demo = {
+        id: payload.id,
+        x_studio_maintenance_date: payload.x_studio_maintenance_date,
+      };
 
-      if (!Array.isArray(demo)) {
-        throw new Error('Demo must be an array');
-      }
+      const existingCompanies = await this.odoo.call(
+        'x_singledemo',
+        'search_read',
+        [[['id', '=', demo.id]]],
+        {
+          fields: [],
+          limit: 1,
+        },
+      );
 
-      for (const item of demo) {
-        if (!item.id) continue;
-
+      if (existingCompanies.length > 0) {
         await this.odoo.call(
-          'x_studio_single_demo', // model
-          'write', // method
+          'x_singledemo', // Nama model yang sudah kamu konfirmasi
+          'write',
           [
-            [item.id],
+            [Number(demo.id)], // Pastikan ID berupa integer dalam array
             {
-              x_studio_maintenance_date: item.x_studio_maintenance_date,
+              x_studio_maintenance_date: demo.x_studio_maintenance_date,
             },
           ],
         );
-      }
 
-      return {
-        success: true,
-        message: 'Maintenance date updated successfully',
-      };
+        return {
+          success: true,
+          message: 'Maintenance date updated successfully',
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Demo with the given ID does not exist.',
+        };
+      }
     } catch (error) {
       this.logger.error(`❌ Error: ${error.message}`);
       return {
@@ -956,24 +971,34 @@ export class FieldServiceService {
   }
   async harvestDemo(payload: any) {
     try {
-      const { demo } = payload;
+      const demo = {
+        id: payload.id,
+        x_studio_harvest_date: payload.x_studio_harvest_date,
+        x_studio_ubinan: payload.x_studio_ubinan,
+        x_studio_rendemen: payload.x_studio_rendemen,
+      };
 
-      if (!Array.isArray(demo)) {
-        throw new Error('Demo must be an array');
-      }
+      const existingCompanies = await this.odoo.call(
+        'x_singledemo',
+        'search_read',
+        [[['id', '=', demo.id]]],
+        {
+          fields: [],
+          limit: 1,
+        },
+      );
 
-      for (const item of demo) {
-        if (!item.id) continue;
-
+      if (existingCompanies.length > 0) {
         await this.odoo.call(
-          'x_studio_single_demo', // model
-          'write', // method
+          'x_singledemo', // Nama model yang sudah kamu konfirmasi
+          'write',
           [
-            [item.id],
+            [Number(demo.id)], // Pastikan ID berupa integer dalam array
+
             {
-              x_studio_harvest_date: item.x_studio_harvest_date,
-              x_studio_ubinan: item.x_studio_ubinan,
-              x_studio_rendemen: item.x_studio_rendemen,
+              x_studio_harvest_date: demo.x_studio_harvest_date,
+              x_studio_ubinan: demo.x_studio_ubinan,
+              x_studio_rendemen: demo.x_studio_rendemen,
             },
           ],
         );

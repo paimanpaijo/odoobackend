@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as bodyParser from 'body-parser'; // ✅ tambahkan ini
 
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -23,7 +24,7 @@ async function bootstrap() {
   app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 
   // Validasi global
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true,  forbidNonWhitelisted: true, transform: true }));
 
   // Buat folder logs jika belum ada
   const logDir = path.join(__dirname, 'logs');

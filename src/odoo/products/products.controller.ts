@@ -14,8 +14,11 @@ import { ProductsService } from './products.service';
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
   @Get('all')
-  async all() {
-    return this.products.findAll();
+  async all(
+    @Query('category') category: string = 'all',
+    @Query('limit') limit: number = 20,
+  ) {
+    return this.products.findAll(category, limit);
   }
 
   @Get(':id')

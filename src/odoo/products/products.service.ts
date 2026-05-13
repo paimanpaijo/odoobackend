@@ -4,27 +4,28 @@ import { OdooService } from '../odoo.service';
 @Injectable()
 export class ProductsService {
   constructor(private readonly odoo: OdooService) {}
-  async findAll(limit = 20) {
-    return this.odoo.call(
-      'product.template',
-      'search_read',
-      [[['type', '=', 'consu']]],
-      {
-        fields: ['id', 'name', 'list_price', 'qty_available'],
-        limit,
-      },
-    );
+
+  async findAll(sts: string, limit: number): Promise<any[]> {
+    const domain: any[] = [['type', '=', 'consu']];
+    if (sts !== 'all') {
+      domain.push(['x_studio_selection_field_1eh_1jo2ks85q', '=', sts]);
+    }
+    return await this.odoo.call('product.template', 'search_read', [domain], {
+      fields: ['id', 'name', 'list_price', 'qty_available'],
+
+      order: 'id asc',
+    });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number): Promise<any> {
     const res = await this.odoo.call('product.template', 'read', [[id]], {
       fields: [],
     });
     return Array.isArray(res) ? res[0] : res;
   }
 
-  async getPriceLists(limit = 20) {
-    return this.odoo.call(
+  async getPriceLists(limit = 20): Promise<any[]> {
+    return await this.odoo.call(
       'product.pricelist',
       'search_read',
       [[]], // tanpa filter
@@ -35,10 +36,10 @@ export class ProductsService {
     );
   }
 
-  async getPriceListItems(pricelistId: number, limit = 20) {
+  async getPriceListItems(pricelistId: number, limit = 20): Promise<any[]> {
     const today = new Date().toISOString().split('T')[0]; // ambil YYYY-MM-DD
 
-    return this.odoo.call(
+    return await this.odoo.call(
       'product.pricelist.item',
       'search_read',
       [
