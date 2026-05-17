@@ -585,6 +585,9 @@ export class FieldServiceService {
             'x_studio_quantity',
             'x_studio_maintenance_date',
             'x_studio_harvest_date',
+            'x_studio_note_maintenance',
+            'x_studio_note_harvest',
+            'x_studio_plant_note',
           ],
 
           order: 'id desc',
@@ -855,6 +858,7 @@ export class FieldServiceService {
               x_studio_ubinan: item.x_studio_ubinan,
               x_studio_rendemen: item.x_studio_rendemen,
               x_studio_plant_date: item.x_studio_plant_date,
+              x_studio_plant_note: item.x_studio_plant_note,
               x_name: item.product_name || 'No Description',
             },
           ]),
@@ -926,6 +930,7 @@ export class FieldServiceService {
       const demo = {
         id: payload.id,
         x_studio_maintenance_date: payload.x_studio_maintenance_date,
+        x_studio_note_maintenance: payload.x_studio_note_maintenance,
       };
 
       const existingCompanies = await this.odoo.call(
@@ -946,6 +951,7 @@ export class FieldServiceService {
             [Number(demo.id)], // Pastikan ID berupa integer dalam array
             {
               x_studio_maintenance_date: demo.x_studio_maintenance_date,
+              x_studio_note_maintenance: demo.x_studio_note_maintenance,
             },
           ],
         );
@@ -976,6 +982,7 @@ export class FieldServiceService {
         x_studio_harvest_date: payload.x_studio_harvest_date,
         x_studio_ubinan: payload.x_studio_ubinan,
         x_studio_rendemen: payload.x_studio_rendemen,
+        x_studio_note_harvest: payload.x_studio_note_harvest,
       };
 
       const existingCompanies = await this.odoo.call(
@@ -999,6 +1006,7 @@ export class FieldServiceService {
               x_studio_harvest_date: demo.x_studio_harvest_date,
               x_studio_ubinan: demo.x_studio_ubinan,
               x_studio_rendemen: demo.x_studio_rendemen,
+              x_studio_note_harvest: demo.x_studio_note_harvest,
             },
           ],
         );
