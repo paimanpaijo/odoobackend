@@ -10,7 +10,7 @@ export class PartnersService {
     type,
     employeeId = 0,
     page = 1,
-    limit = 20,
+    limit = 10,
     search,
     excepttype,
   ) {

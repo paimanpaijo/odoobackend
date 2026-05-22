@@ -13,10 +13,6 @@ import { EmployeeService } from './employee.service';
 @Controller()
 export class EmployeeController {
   constructor(private readonly Employee: EmployeeService) {}
-  @Get('allx')
-  async allx() {
-    return this.Employee.findAll();
-  }
 
   @Get('all')
   async all(
@@ -24,6 +20,7 @@ export class EmployeeController {
     @Query('limit') limit = 10,
     @Query('department_id') departmentId?: string,
     @Query('job_title') jobTitle?: string,
+    @Query('search') search?: string,
   ) {
     const filters: any[] = [];
 
@@ -32,6 +29,9 @@ export class EmployeeController {
     }
     if (jobTitle) {
       filters.push(['job_title', 'ilike', jobTitle]);
+    }
+    if (search) {
+      filters.push(['name', 'ilike', search]);
     }
 
     return this.Employee.findAll(Number(page), Number(limit), filters);

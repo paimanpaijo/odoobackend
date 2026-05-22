@@ -171,8 +171,4 @@ export class SalesController {
   async getSts(@Query('id') id: number) {
     return this.sales.getSts(id);
   }
-  @Get('invoices/detail/:id')
-  async getInvoiceDetail(@Param('id') id: number) {
-    return this.sales.getInvoiceDetail(id);
-  }
 }

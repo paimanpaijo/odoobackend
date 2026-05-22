@@ -15,6 +15,7 @@ import { UploadModule } from './upload/upload.module';
 import { AuthModule } from './auth/auth.module';
 import { ActivityplanModule } from './odoo/activityplan/activityplan.module';
 import { MailModule } from './odoo/mail/mail.module';
+import { InvoicesModule } from './odoo/invoices/invoices.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { MailModule } from './odoo/mail/mail.module';
     UploadModule,
     ActivityplanModule,
     MailModule,
+    InvoicesModule,
 
     RouterModule.register([
       {
@@ -48,6 +50,7 @@ import { MailModule } from './odoo/mail/mail.module';
           { path: 'upload', module: UploadModule },
           { path: 'activityplan', module: ActivityplanModule },
           { path: 'mail', module: MailModule },
+          { path: 'invoices', module: InvoicesModule },
         ],
       },
     ]),
