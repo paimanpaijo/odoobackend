@@ -332,6 +332,60 @@ export class InvoicesService {
       // =========================
       let customerDetail: Record<string, any> | null = null;
 
+      // =========================
+// DOWN PAYMENT
+// =========================
+let downpayment_total = 0;
+let downpayment_lines: any[] = [];
+
+if (inv.invoice_origin) {
+  // cari sale order berdasarkan origin
+  const saleOrders = await this.odoo.call('sale.order', 'search_read', [
+    [['name', '=', inv.invoice_origin]],
+    ['id', 'name'],
+  ]);
+
+  if (saleOrders.length > 0) {
+    const saleOrderId = saleOrders[0].id;
+
+    // cari line downpayment
+    const dpLines = await this.odoo.call(
+      'sale.order.line',
+      'search_read',
+      [
+        [
+          ['order_id', '=', saleOrderId],
+          ['is_downpayment', '=', true],
+        ],
+        [
+          'id',
+          'name',
+          'price_unit',
+          'price_subtotal',
+          'price_total',
+          'qty_invoiced',
+          'product_id',
+        ],
+      ],
+    );
+
+    downpayment_lines = dpLines.map((dp) => ({
+      id: dp.id,
+      description: dp.name,
+      product_id: dp.product_id?.[0],
+      product_name: dp.product_id?.[1],
+      amount: dp.price_total,
+      subtotal: dp.price_subtotal,
+      qty_invoiced: dp.qty_invoiced,
+    }));
+
+    downpayment_total = dpLines.reduce(
+      (sum, dp) => sum + (dp.price_total || 0),
+      0,
+    );
+  }
+}
+
       if (inv.partner_id?.[0]) {
         const customer = await this.odoo.call('res.partner', 'search_read', [
           [['id', '=', inv.partner_id[0]]],
@@ -615,7 +669,7 @@ export class InvoicesService {
 
           total_amount: total,
           untaxed_amount: inv.amount_untaxed,
-
+downpayment_total : downpayment_total,
           total_paid: paid,
           total_unpaid: unpaid,
 
