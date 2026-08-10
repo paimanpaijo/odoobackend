@@ -55,7 +55,7 @@ import { InvoicesModule } from './odoo/invoices/invoices.module';
       },
     ]),
 
-    AuthModule,
+    //AuthModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

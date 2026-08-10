@@ -1,0 +1,12 @@
+ODOO_URL=https://ssi-sales.shriramgenetics.com/jsonrpc
+ODOO_DB=odoo
+ODOO_USERtw=supriyanto.mlg@gmail.com
+ODOO_PASStw=P@55w0rd
+PORT=3000
+HOST=0.0.0.0
+FRONTEND_ORIGIN=http://localhost:4000
+ODOO_USER=odoo.shriramgenetics@gmail.com
+ODOO_PASS=P@55w0rd@ODOO
+MAIL_USER=zurrasystem@gmail.com
+MAIL_PASS=uoeuhxkqskbsbupv
+TOKEN_WHATSAPP=i6ScAVQHJtXGQhhfLxC1
